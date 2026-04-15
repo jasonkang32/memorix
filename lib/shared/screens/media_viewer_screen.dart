@@ -39,7 +39,8 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
     _items = List.from(widget.items);
     _current = widget.initialIndex.clamp(0, _items.length - 1);
     _pageCtrl = PageController(initialPage: _current);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    // edgeToEdge: 네비게이션 바를 항상 표시 (immersiveSticky는 백버튼 영역을 가림)
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
 
   @override

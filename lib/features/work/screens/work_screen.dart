@@ -11,7 +11,6 @@ import '../../../shared/widgets/capture_bottom_sheet.dart';
 import '../../../shared/widgets/media_timeline.dart';
 import '../../../shared/screens/media_detail_screen.dart';
 import '../../../shared/screens/media_viewer_screen.dart';
-import '../../import/screens/messenger_import_screen.dart';
 import 'report_screen.dart';
 
 class WorkScreen extends ConsumerStatefulWidget {
@@ -191,40 +190,57 @@ class _WorkScreenState extends ConsumerState<WorkScreen> {
     List<CapturedMedia>? capturedList =
         await CaptureBottomSheet.show(context, allowDocument: true);
 
-    // 빈 리스트(메신저 선택)이면 메신저 화면으로 이동, null(취소)이면 무시
-    if (capturedList != null && capturedList.isEmpty && context.mounted) {
-      capturedList = await Navigator.push<List<CapturedMedia>>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const MessengerImportScreen(space: MediaSpace.work),
-        ),
-      );
-    }
-
     if (capturedList == null || capturedList.isEmpty || !context.mounted) return;
 
-    final results = await MediaSaveService.saveAll(
-      captured: capturedList,
-      space: MediaSpace.work,
-    );
-    ref.invalidate(workMediaProvider);
+    try {
+      final results = await MediaSaveService.saveAll(
+        captured: capturedList,
+        space: MediaSpace.work,
+      );
+      ref.invalidate(workMediaProvider);
 
-    if (!context.mounted) return;
-    if (results.length > 1) {
+      if (!context.mounted) return;
+
+      if (results.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('저장된 항목이 없습니다.'),
+          backgroundColor: Colors.orange,
+        ));
+        return;
+      }
+
+      final savedCount = results.length;
+      final selectedCount = capturedList.length;
+      if (savedCount < selectedCount) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              '$selectedCount개 중 $savedCount개 저장됨 (${selectedCount - savedCount}개 실패)'),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 3),
+        ));
+      } else if (savedCount > 1) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('$savedCount개 저장됨. 첫 번째 항목을 편집합니다.'),
+          duration: const Duration(seconds: 2),
+        ));
+      }
+
+      final savedItems = results.map((r) => r.item).toList();
+      await Navigator.push<dynamic>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MediaDetailScreen(items: savedItems, initialIndex: 0),
+        ),
+      );
+      // 편집 여부와 무관하게 복귀 시 무조건 새로고침
+      if (context.mounted) ref.invalidate(workMediaProvider);
+    } catch (e) {
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('${results.length}개 저장됨. 첫 번째 항목을 편집합니다.'),
-        duration: const Duration(seconds: 2),
+        content: Text('미디어 저장 실패: $e'),
+        backgroundColor: Colors.red,
       ));
     }
-
-    final savedItems = results.map((r) => r.item).toList();
-    final changed = await Navigator.push<dynamic>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => MediaDetailScreen(items: savedItems, initialIndex: 0),
-      ),
-    );
-    if (changed != null && context.mounted) ref.invalidate(workMediaProvider);
   }
 
   void _openViewer(BuildContext context, List<MediaItem> items, int index) {

@@ -14,7 +14,7 @@ class AppDatabase {
     final path = join(dbPath, 'memorix.db');
     return openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -41,7 +41,8 @@ class AppDatabase {
         duration_sec  INTEGER DEFAULT 0,
         drive_synced  INTEGER DEFAULT 0,
         drive_file_id TEXT DEFAULT '',
-        batch_id      TEXT DEFAULT ''
+        batch_id      TEXT DEFAULT '',
+        ocr_text      TEXT DEFAULT ''
       )
     ''');
 
@@ -103,19 +104,21 @@ class AppDatabase {
     await db.execute('''
       CREATE VIRTUAL TABLE media_fts USING fts4(
         content="media",
-        title, note
+        title, note, ocr_text
       )
     ''');
 
     await db.execute('''
       CREATE TRIGGER media_fts_insert AFTER INSERT ON media BEGIN
-        INSERT INTO media_fts(docid, title, note) VALUES (new.id, new.title, new.note);
+        INSERT INTO media_fts(docid, title, note, ocr_text)
+        VALUES (new.id, new.title, new.note, new.ocr_text);
       END
     ''');
     await db.execute('''
       CREATE TRIGGER media_fts_update AFTER UPDATE ON media BEGIN
         DELETE FROM media_fts WHERE docid = old.id;
-        INSERT INTO media_fts(docid, title, note) VALUES (new.id, new.title, new.note);
+        INSERT INTO media_fts(docid, title, note, ocr_text)
+        VALUES (new.id, new.title, new.note, new.ocr_text);
       END
     ''');
     await db.execute('''
@@ -135,9 +138,19 @@ class AppDatabase {
       await _createFts(db);
     }
     if (oldVersion < 3) {
-      // batch_id 컬럼 추가
       await db.execute(
           "ALTER TABLE media ADD COLUMN batch_id TEXT DEFAULT ''");
+    }
+    if (oldVersion < 4) {
+      // ocr_text 컬럼 추가
+      await db.execute(
+          "ALTER TABLE media ADD COLUMN ocr_text TEXT DEFAULT ''");
+      // FTS 트리거 재생성 (ocr_text 포함)
+      await db.execute('DROP TRIGGER IF EXISTS media_fts_insert');
+      await db.execute('DROP TRIGGER IF EXISTS media_fts_update');
+      await db.execute('DROP TRIGGER IF EXISTS media_fts_delete');
+      await db.execute('DROP TABLE IF EXISTS media_fts');
+      await _createFts(db);
     }
   }
 

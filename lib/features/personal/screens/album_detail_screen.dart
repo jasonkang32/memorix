@@ -112,6 +112,57 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
     if (mounted) Navigator.pop(context);
   }
 
+  Future<void> _moveToAlbum(MediaItem item) async {
+    final albums = await _albumDao.findAll();
+    final otherAlbums =
+        albums.where((a) => a.id != widget.album.id).toList();
+    if (!mounted) return;
+
+    // -1 = 미분류(앨범 없음), null = 취소
+    final selectedId = await showDialog<int>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('앨범으로 이동'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, -1),
+            child: Row(children: [
+              const Icon(Icons.inbox_outlined, size: 20),
+              const SizedBox(width: 8),
+              Text('미분류 (앨범 없음)',
+                  style: TextStyle(color: Colors.grey[700])),
+            ]),
+          ),
+          const Divider(height: 1),
+          ...otherAlbums.map((a) => SimpleDialogOption(
+                onPressed: () => Navigator.pop(ctx, a.id),
+                child: Row(children: [
+                  Text(_eventEmoji(a.eventType),
+                      style: const TextStyle(fontSize: 18)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(a.title,
+                        overflow: TextOverflow.ellipsis),
+                  ),
+                ]),
+              )),
+        ],
+      ),
+    );
+    if (selectedId == null || !mounted) return;
+    final targetAlbumId = selectedId == -1 ? null : selectedId;
+    await _mediaDao.moveToAlbum(item.id!, targetAlbumId);
+    _loadItems();
+    ref.invalidate(personalMediaProvider);
+    if (mounted) {
+      final dest = selectedId == -1
+          ? '미분류'
+          : otherAlbums.firstWhere((a) => a.id == selectedId).title;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('"$dest"(으)로 이동했습니다')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final eventEmoji = _eventEmoji(widget.album.eventType);
@@ -208,6 +259,14 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.drive_file_move_outlined),
+              title: const Text('앨범 이동'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _moveToAlbum(item);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.edit_outlined),
               title: const Text('상세 편집'),
               onTap: () async {
@@ -215,7 +274,8 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
                 await Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => MediaDetailScreen(items: [item], initialIndex: 0)),
+                      builder: (_) =>
+                          MediaDetailScreen(items: [item], initialIndex: 0)),
                 );
                 _loadItems();
               },
@@ -250,6 +310,8 @@ class _AlbumEditDialogState extends State<_AlbumEditDialog> {
   late final TextEditingController _titleCtrl;
   late final TextEditingController _memoCtrl;
   late EventType _eventType;
+  DateTime? _dateStart;
+  DateTime? _dateEnd;
   bool _saving = false;
 
   @override
@@ -258,6 +320,12 @@ class _AlbumEditDialogState extends State<_AlbumEditDialog> {
     _titleCtrl = TextEditingController(text: widget.album.title);
     _memoCtrl = TextEditingController(text: widget.album.memo);
     _eventType = widget.album.eventType;
+    _dateStart = widget.album.dateStart != null
+        ? DateTime.fromMillisecondsSinceEpoch(widget.album.dateStart!)
+        : null;
+    _dateEnd = widget.album.dateEnd != null
+        ? DateTime.fromMillisecondsSinceEpoch(widget.album.dateEnd!)
+        : null;
   }
 
   @override
@@ -265,6 +333,24 @@ class _AlbumEditDialogState extends State<_AlbumEditDialog> {
     _titleCtrl.dispose();
     _memoCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDateRange() async {
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      initialDateRange: _dateStart != null && _dateEnd != null
+          ? DateTimeRange(start: _dateStart!, end: _dateEnd!)
+          : null,
+      locale: const Locale('ko'),
+    );
+    if (range != null) {
+      setState(() {
+        _dateStart = range.start;
+        _dateEnd = range.end;
+      });
+    }
   }
 
   Future<void> _save() async {
@@ -276,8 +362,8 @@ class _AlbumEditDialogState extends State<_AlbumEditDialog> {
       eventType: _eventType,
       memo: _memoCtrl.text.trim(),
       coverMediaId: widget.album.coverMediaId,
-      dateStart: widget.album.dateStart,
-      dateEnd: widget.album.dateEnd,
+      dateStart: _dateStart?.millisecondsSinceEpoch,
+      dateEnd: _dateEnd?.millisecondsSinceEpoch,
       createdAt: widget.album.createdAt,
     );
     await widget.onSaved(updated);
@@ -288,48 +374,80 @@ class _AlbumEditDialogState extends State<_AlbumEditDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('앨범 편집'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _titleCtrl,
-            decoration: const InputDecoration(
-              labelText: '앨범 이름',
-              border: OutlineInputBorder(),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _titleCtrl,
+              decoration: const InputDecoration(
+                labelText: '앨범 이름',
+                border: OutlineInputBorder(),
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<EventType>(
-            initialValue: _eventType,
-            decoration: const InputDecoration(
-              labelText: '이벤트 유형',
-              border: OutlineInputBorder(),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<EventType>(
+              initialValue: _eventType,
+              decoration: const InputDecoration(
+                labelText: '이벤트 유형',
+                border: OutlineInputBorder(),
+              ),
+              items: EventType.values
+                  .map((e) =>
+                      DropdownMenuItem(value: e, child: Text(e.name)))
+                  .toList(),
+              onChanged: (v) => setState(() => _eventType = v!),
             ),
-            items: EventType.values
-                .map((e) => DropdownMenuItem(value: e, child: Text(e.name)))
-                .toList(),
-            onChanged: (v) => setState(() => _eventType = v!),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _memoCtrl,
-            maxLines: 2,
-            decoration: const InputDecoration(
-              labelText: '메모 (선택)',
-              border: OutlineInputBorder(),
+            const SizedBox(height: 12),
+            InkWell(
+              onTap: _pickDateRange,
+              borderRadius: BorderRadius.circular(4),
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: '기간 (선택)',
+                  border: OutlineInputBorder(),
+                  suffixIcon: Icon(Icons.calendar_month_outlined),
+                ),
+                child: Text(
+                  _dateStart != null
+                      ? '${_fmtDate(_dateStart!)} ~ ${_fmtDate(_dateEnd!)}'
+                      : '날짜 선택',
+                  style: TextStyle(
+                    color: _dateStart != null ? null : Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                ),
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            TextField(
+              controller: _memoCtrl,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: '메모 (선택)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('취소')),
         FilledButton(
           onPressed: _saving ? null : _save,
           child: _saving
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2))
               : const Text('저장'),
         ),
       ],
     );
   }
+
+  static String _fmtDate(DateTime d) =>
+      '${d.year}.${d.month.toString().padLeft(2, '0')}.${d.day.toString().padLeft(2, '0')}';
 }

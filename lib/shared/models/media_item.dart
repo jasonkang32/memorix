@@ -25,6 +25,8 @@ class MediaItem {
   final String driveFileId;
   // 일괄 등록 그룹 식별자
   final String batchId;
+  // OCR 추출 텍스트
+  final String ocrText;
 
   const MediaItem({
     this.id,
@@ -46,6 +48,7 @@ class MediaItem {
     this.driveSynced = 0,
     this.driveFileId = '',
     this.batchId = '',
+    this.ocrText = '',
   });
 
   factory MediaItem.fromMap(Map<String, dynamic> map) => MediaItem(
@@ -68,6 +71,7 @@ class MediaItem {
         driveSynced: map['drive_synced'] as int? ?? 0,
         driveFileId: map['drive_file_id'] as String? ?? '',
         batchId: map['batch_id'] as String? ?? '',
+        ocrText: map['ocr_text'] as String? ?? '',
       );
 
   Map<String, dynamic> toMap() => {
@@ -90,6 +94,7 @@ class MediaItem {
         'drive_synced': driveSynced,
         'drive_file_id': driveFileId,
         'batch_id': batchId,
+        'ocr_text': ocrText,
       };
 
   static MediaType _parseType(String s) => switch (s) {
@@ -118,6 +123,7 @@ class MediaItem {
     int? driveSynced,
     String? driveFileId,
     String? batchId,
+    String? ocrText,
   }) =>
       MediaItem(
         id: id ?? this.id,
@@ -139,5 +145,6 @@ class MediaItem {
         driveSynced: driveSynced ?? this.driveSynced,
         driveFileId: driveFileId ?? this.driveFileId,
         batchId: batchId ?? this.batchId,
+        ocrText: ocrText ?? this.ocrText,
       );
 }

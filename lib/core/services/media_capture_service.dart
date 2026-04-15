@@ -1,6 +1,8 @@
+import 'dart:developer' as developer;
 import 'dart:io';
 import 'package:exif/exif.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
@@ -8,6 +10,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'storage_service.dart';
+
+const _pickerChannel = MethodChannel('memorix/picker');
 
 const _uuid = Uuid();
 
@@ -45,35 +49,54 @@ class MediaCaptureService {
       imageQuality: 95,
     );
     if (xfile == null) return [];
-    final result = await _processPhoto(xfile.path, deleteSource: false);
+    // Android에서도 content:// URI가 올 수 있으므로 saveTo()로 복사
+    final tmpDir = await getTemporaryDirectory();
+    final tmpPath = p.join(tmpDir.path, '${_uuid.v4()}.jpg');
+    await xfile.saveTo(tmpPath);
+    final result = await _processPhoto(tmpPath, deleteSource: true);
     return [result];
   }
 
-  /// 갤러리에서 사진 다중선택 (최대 10개) — 갤러리 앱 직접 호출
-  /// FileType.image → 내 파일 앱 대신 갤러리/사진 앱만 열림
-  static Future<List<CapturedMedia>> pickMultiple(BuildContext context) async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.image,
-      allowMultiple: true,
-      withData: false,
-    );
-    if (result == null || result.files.isEmpty) return [];
+  /// 갤러리에서 사진+영상 다중선택
+  /// 네이티브 MethodChannel 로 ACTION_PICK_IMAGES 인텐트 직접 호출 —
+  /// Android 13+ 시스템 포토 피커는 탭만으로 다중선택 모드 활성화 (long-press 불필요)
+  static Future<List<CapturedMedia>> pickGallery(BuildContext context) async {
+    List<String> paths = const <String>[];
+    try {
+      final List<dynamic>? raw = await _pickerChannel
+          .invokeMethod<List<dynamic>>('pickMedia', {'maxItems': 50});
+      paths = raw?.cast<String>() ?? const <String>[];
+      developer.log('pickGallery: native returned ${paths.length} paths',
+          name: 'memorix.picker');
+    } catch (e, st) {
+      developer.log('pickGallery: invokeMethod failed: $e',
+          error: e, stackTrace: st, name: 'memorix.picker');
+      return [];
+    }
+    if (paths.isEmpty) return [];
 
+    // 네이티브가 이미 캐시 디렉토리로 복사한 파일 경로 반환 — 처리 후 삭제
     final results = <CapturedMedia>[];
-    for (final file in result.files.take(10)) {
-      if (file.path != null) {
-        results.add(await _processPhoto(file.path!, deleteSource: false));
+    for (final path in paths) {
+      try {
+        final ext = p.extension(path).toLowerCase();
+        final isVideo = _videoExtensions.contains(ext);
+        if (isVideo) {
+          results.add(await _processVideo(path, deleteSource: true));
+        } else {
+          results.add(await _processPhoto(path, deleteSource: true));
+        }
+      } catch (_) {
+        try { File(path).deleteSync(); } catch (_) {}
       }
     }
     return results;
   }
 
-  /// 갤러리에서 영상 단일 선택
-  static Future<List<CapturedMedia>> pickVideo(BuildContext context) async {
-    final xfile = await _picker.pickVideo(source: ImageSource.gallery);
-    if (xfile == null) return [];
-    return [await _processVideo(xfile.path, deleteSource: false)];
-  }
+  static const _videoExtensions = {
+    '.mp4', '.mov', '.avi', '.mkv', '.webm',
+    '.3gp', '.3g2', '.m4v', '.wmv', '.ts', '.flv', '.f4v',
+  };
 
   /// 문서 가져오기
   static Future<List<CapturedMedia>> pickDocument(BuildContext context) async {

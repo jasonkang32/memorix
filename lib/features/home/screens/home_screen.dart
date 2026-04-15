@@ -48,6 +48,7 @@ class HomeScreen extends ConsumerWidget {
                           colors: [Color(0xFF1A73E8), Color(0xFF00C896)],
                         ),
                         icon: Icons.work_rounded,
+                        onTap: () => context.go('/work'),
                       )),
                       const SizedBox(width: 12),
                       Expanded(child: _SpaceCard(
@@ -59,6 +60,7 @@ class HomeScreen extends ConsumerWidget {
                           colors: [Color(0xFFFF6B9D), Color(0xFF7B61FF)],
                         ),
                         icon: Icons.favorite_rounded,
+                        onTap: () => context.go('/personal'),
                       )),
                     ],
                   ),
@@ -97,8 +99,6 @@ class HomeScreen extends ConsumerWidget {
 
   SliverAppBar _buildAppBar(BuildContext context) {
     final now = DateTime.now();
-    final greeting = now.hour < 12 ? '좋은 아침이에요' :
-                     now.hour < 18 ? '안녕하세요' : '수고하셨어요';
     final dateStr = DateFormat('M월 d일 (E)', 'ko').format(now);
 
     return SliverAppBar(
@@ -139,9 +139,19 @@ class HomeScreen extends ConsumerWidget {
                       Text(
                         dateStr,
                         style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.white70,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
                         ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.search_rounded,
+                            color: Colors.white, size: 24),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        tooltip: '검색',
+                        onPressed: () => context.go('/search'),
                       ),
                     ],
                   ),
@@ -324,6 +334,7 @@ class _SpaceCard extends StatelessWidget {
   final String sub;
   final LinearGradient gradient;
   final IconData icon;
+  final VoidCallback? onTap;
 
   const _SpaceCard({
     required this.label,
@@ -332,6 +343,7 @@ class _SpaceCard extends StatelessWidget {
     required this.sub,
     required this.gradient,
     required this.icon,
+    this.onTap,
   });
 
   @override
@@ -340,7 +352,9 @@ class _SpaceCard extends StatelessWidget {
     final videos = byType['video'] ?? 0;
     final docs = byType['document'] ?? 0;
 
-    return Container(
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: gradient,
@@ -386,7 +400,8 @@ class _SpaceCard extends StatelessWidget {
           ),
         ],
       ),
-    );
+    ), // Container
+    ); // GestureDetector
   }
 }
 

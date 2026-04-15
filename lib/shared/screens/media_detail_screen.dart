@@ -4,14 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/services.dart';
 import '../../core/db/media_dao.dart';
 import '../../core/db/tag_dao.dart';
 import '../../core/db/people_dao.dart';
+import '../../core/services/ocr_service.dart';
 import '../../core/services/storage_service.dart';
 import '../models/media_item.dart';
 import '../models/tag.dart';
 import '../models/person.dart';
+import '../widgets/capture_bottom_sheet.dart';
 import '../widgets/people_chips.dart';
+import '../../core/services/media_save_service.dart';
 import 'media_viewer_screen.dart';
 
 class MediaDetailScreen extends ConsumerStatefulWidget {
@@ -43,6 +47,7 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
   bool _saving = false;
   bool _saved = false;
   bool _locating = false;
+  bool _ocrRunning = false;
   late List<MediaItem> _previewItems; // 삭제 반영용 로컬 복사본
   late DateTime _eventDate;   // 이벤트 날짜 (takenAt 기반, 편집 가능)
   late DateTime _initialEventDate;
@@ -170,6 +175,31 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
     return null;
   }
 
+  /// OCR 실행 (사진 전용) — 결과를 DB에 저장하고 item 갱신
+  Future<void> _runOcr() async {
+    if (item.mediaType == MediaType.video) return;
+    setState(() => _ocrRunning = true);
+    try {
+      final text = await OcrService.extractText(item.filePath);
+      if (item.id != null) {
+        await _mediaDao.updateOcrText(item.id!, text);
+      }
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              text.isEmpty ? '텍스트를 인식하지 못했습니다' : '텍스트 인식 완료 (${text.length}자)',
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _ocrRunning = false);
+    }
+  }
+
   /// 달력 + 시간 선택으로 이벤트 날짜 변경
   Future<void> _pickEventDate() async {
     final pickedDate = await showDatePicker(
@@ -177,7 +207,6 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
       initialDate: _eventDate,
       firstDate: DateTime(2000),
       lastDate: DateTime.now().add(const Duration(days: 365)),
-      locale: const Locale('ko'),
       helpText: '이벤트 날짜 선택',
       confirmText: '다음',
       cancelText: '취소',
@@ -187,7 +216,7 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
     final pickedTime = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(_eventDate),
-      helpText: '이벤트 시간 선택',
+      helpText: '이벤트 시간',
       confirmText: '확인',
       cancelText: '취소',
     );
@@ -462,6 +491,17 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
           ),
           const SizedBox(height: 20),
 
+          // ── OCR 인식 텍스트 (사진·문서만) ──
+          if (item.mediaType != MediaType.video) ...[
+            const SizedBox(height: 20),
+            _OcrSection(
+              item: item,
+              isRunning: _ocrRunning,
+              onRun: _runOcr,
+            ),
+          ],
+          const SizedBox(height: 20),
+
           // 태그 섹션
           _TagSection(
             allTags: _allTags,
@@ -532,14 +572,56 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
     final items = _previewItems;
 
     return Column(
-      children: List.generate(items.length, (index) {
-        final cur = items[index];
-        return Padding(
-          padding: EdgeInsets.only(bottom: index < items.length - 1 ? 8 : 0),
-          child: _buildSingleImage(cur, index),
-        );
-      }),
+      children: [
+        ...List.generate(items.length, (index) {
+          final cur = items[index];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _buildSingleImage(cur, index),
+          );
+        }),
+        const SizedBox(height: 4),
+        OutlinedButton.icon(
+          onPressed: _addMedia,
+          icon: const Icon(Icons.add_photo_alternate_outlined, size: 20),
+          label: const Text('미디어 추가'),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(double.infinity, 52),
+            foregroundColor: Colors.grey,
+            side: BorderSide(color: Colors.grey.shade300, width: 1),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+      ],
     );
+  }
+
+  /// 미디어 추가 — CaptureBottomSheet로 선택 후 저장, _previewItems에 추가
+  Future<void> _addMedia() async {
+    final captured = await CaptureBottomSheet.show(
+      context,
+      allowDocument: item.space == MediaSpace.work,
+      space: item.space,
+    );
+    if (captured == null || captured.isEmpty || !mounted) return;
+    try {
+      final results = await MediaSaveService.saveAll(
+        captured: captured,
+        space: item.space,
+        albumId: item.albumId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _previewItems = [..._previewItems, ...results.map((r) => r.item)];
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('미디어 저장 실패: $e'),
+        backgroundColor: Colors.red,
+      ));
+    }
   }
 
   /// viewer에서 삭제 후 돌아오면 파일이 없는 항목 제거
@@ -860,6 +942,162 @@ class _MediaMeta extends StatelessWidget {
         Icon(icon, size: 13, color: Colors.grey),
         const SizedBox(width: 4),
         Text(text, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+      ],
+    );
+  }
+}
+
+// ── OCR 섹션 ─────────────────────────────────────────────────
+
+class _OcrSection extends StatelessWidget {
+  final MediaItem item;
+  final bool isRunning;
+  final VoidCallback onRun;
+
+  const _OcrSection({
+    required this.item,
+    required this.isRunning,
+    required this.onRun,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cs = Theme.of(context).colorScheme;
+    final hasText = item.ocrText.isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 헤더 행
+        Row(
+          children: [
+            const Icon(Icons.text_fields_outlined, size: 18),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                'OCR 텍스트 인식',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+            // 실행 버튼
+            TextButton.icon(
+              onPressed: isRunning ? null : onRun,
+              icon: isRunning
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.document_scanner_outlined, size: 16),
+              label: Text(
+                isRunning ? '인식 중...' : (hasText ? '재인식' : '텍스트 인식'),
+                style: const TextStyle(fontSize: 13),
+              ),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        // OCR 결과 표시
+        if (hasText)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? const Color(0xFF1A2030)
+                  : const Color(0xFFF0F8FF),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isDark
+                    ? const Color(0xFF2A3550)
+                    : const Color(0xFFBBDDFF),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.format_quote,
+                        size: 14,
+                        color: cs.primary.withValues(alpha: 0.6)),
+                    const SizedBox(width: 4),
+                    Text(
+                      '인식된 텍스트 (${item.ocrText.length}자)',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: cs.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const Spacer(),
+                    // 클립보드 복사
+                    GestureDetector(
+                      onTap: () {
+                        Clipboard.setData(ClipboardData(text: item.ocrText));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('클립보드에 복사했습니다'),
+                            duration: Duration(seconds: 1),
+                          ),
+                        );
+                      },
+                      child: Icon(Icons.copy_outlined,
+                          size: 16,
+                          color: cs.primary.withValues(alpha: 0.7)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  item.ocrText,
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.6,
+                    color: isDark ? Colors.white70 : const Color(0xFF2D3748),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? const Color(0xFF1A2030)
+                  : const Color(0xFFF8F9FA),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isDark
+                    ? const Color(0xFF2A3550)
+                    : const Color(0xFFE0E0E0),
+              ),
+            ),
+            child: Column(
+              children: [
+                Icon(Icons.text_snippet_outlined,
+                    size: 32,
+                    color: Colors.grey.withValues(alpha: 0.5)),
+                const SizedBox(height: 8),
+                const Text(
+                  '인식된 텍스트가 없습니다\n"텍스트 인식" 버튼을 눌러 실행하세요',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: Colors.grey, height: 1.5),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }

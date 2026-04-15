@@ -93,26 +93,36 @@ class StorageService {
       await File(sourcePath).copy(destPath);
     } else {
       // 지정 품질로 압축 저장
-      final result = await FlutterImageCompress.compressAndGetFile(
-        sourcePath,
-        destPath,
-        quality: quality.quality,
-      );
-      if (result == null) {
+      try {
+        final result = await FlutterImageCompress.compressAndGetFile(
+          sourcePath,
+          destPath,
+          quality: quality.quality,
+        );
+        if (result == null) {
+          // 압축 결과 null → 원본 복사
+          await File(sourcePath).copy(destPath);
+        }
+      } catch (_) {
         // 압축 실패 시 원본 복사
         await File(sourcePath).copy(destPath);
       }
     }
 
     // 썸네일 생성 (항상 압축)
-    final thumbPath = p.join(dir, '${id}_thumb.jpg');
-    await FlutterImageCompress.compressAndGetFile(
-      destPath,
-      thumbPath,
-      minWidth: 300,
-      minHeight: 200,
-      quality: 75,
-    );
+    String thumbPath = p.join(dir, '${id}_thumb.jpg');
+    try {
+      final result = await FlutterImageCompress.compressAndGetFile(
+        destPath,
+        thumbPath,
+        minWidth: 300,
+        minHeight: 200,
+        quality: 75,
+      );
+      if (result == null) thumbPath = destPath; // 실패 시 원본 경로 사용
+    } catch (_) {
+      thumbPath = destPath; // 압축 실패 시 원본 경로 사용
+    }
 
     return (filePath: destPath, thumbPath: thumbPath);
   }

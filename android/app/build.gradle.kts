@@ -37,10 +37,18 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // ML Kit 한국어 OCR 네이티브 라이브러리
+    // google_mlkit_text_recognition 패키지는 Latin만 기본 포함하므로
+    // TextRecognitionScript.korean 을 사용하려면 반드시 아래 의존성 필요
+    implementation("com.google.mlkit:text-recognition-korean:16.0.1")
 }

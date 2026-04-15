@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:geocoding/geocoding.dart';
 import 'package:uuid/uuid.dart';
 import '../../shared/models/media_item.dart';
@@ -6,6 +8,7 @@ import '../db/media_dao.dart';
 import '../db/tag_dao.dart';
 import 'ai_tag_service.dart';
 import 'media_capture_service.dart';
+import 'ocr_service.dart';
 
 const _uuid = Uuid();
 
@@ -44,6 +47,12 @@ class MediaSaveService {
     final takenAt = captured.takenAt ?? DateTime.now().millisecondsSinceEpoch;
     final now = DateTime.now().millisecondsSinceEpoch;
 
+    // 사진·문서만 OCR 실행 (영상 제외)
+    String ocrText = '';
+    if (captured.mediaType == 'photo' || captured.mediaType == 'document') {
+      ocrText = await OcrService.extractText(captured.filePath);
+    }
+
     final item = MediaItem(
       space: space,
       mediaType: _parseType(captured.mediaType),
@@ -61,6 +70,7 @@ class MediaSaveService {
       fileSizeKb: captured.fileSizeKb,
       durationSec: captured.durationSec,
       batchId: batchId,
+      ocrText: ocrText,
     );
 
     final id = await _mediaDao.insert(item);
@@ -82,8 +92,13 @@ class MediaSaveService {
     final batchId = captured.length > 1 ? _uuid.v4() : '';
     final results = <MediaSaveResult>[];
     for (final c in captured) {
-      results.add(
-          await save(captured: c, space: space, albumId: albumId, batchId: batchId));
+      try {
+        results.add(
+            await save(captured: c, space: space, albumId: albumId, batchId: batchId));
+      } catch (e, stack) {
+        // 개별 항목 저장 실패 시 로그 후 건너뜀 — 나머지는 계속 저장
+        developer.log('MediaSaveService: 항목 저장 실패: $e', error: e, stackTrace: stack, name: 'memorix');
+      }
     }
     return results;
   }

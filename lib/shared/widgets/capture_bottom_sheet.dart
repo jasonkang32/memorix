@@ -88,9 +88,19 @@ class CaptureBottomSheet extends StatelessWidget {
               color: const Color(0xFF00C896),
               label: '카메라로 촬영',
               onTap: () async {
-                final results = await MediaCaptureService.capturePhoto();
-                if (context.mounted) {
-                  Navigator.pop(context, results.isEmpty ? null : results);
+                try {
+                  final results = await MediaCaptureService.capturePhoto();
+                  if (context.mounted) {
+                    Navigator.pop(context, results.isEmpty ? null : results);
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    Navigator.pop(context, null);
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text('카메라 오류: $e'),
+                      backgroundColor: Colors.red,
+                    ));
+                  }
                 }
               },
             ),
@@ -98,36 +108,23 @@ class CaptureBottomSheet extends StatelessWidget {
               context,
               icon: Icons.photo_library_outlined,
               color: const Color(0xFF7B61FF),
-              label: '갤러리 사진 가져오기',
-              subtitle: '최대 10장 선택',
+              label: '갤러리에서 가져오기',
+              subtitle: '사진·영상 여러 개 선택 후 "추가"',
               onTap: () async {
-                final results = await MediaCaptureService.pickMultiple(context);
-                if (context.mounted) {
-                  Navigator.pop(context, results.isEmpty ? null : results);
+                try {
+                  final results = await MediaCaptureService.pickGallery(context);
+                  if (context.mounted) {
+                    Navigator.pop(context, results.isEmpty ? null : results);
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    Navigator.pop(context, null);
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text('갤러리 오류: $e'),
+                      backgroundColor: Colors.red,
+                    ));
+                  }
                 }
-              },
-            ),
-            _tile(
-              context,
-              icon: Icons.videocam_outlined,
-              color: const Color(0xFF00A8FF),
-              label: '갤러리 영상 가져오기',
-              onTap: () async {
-                final results = await MediaCaptureService.pickVideo(context);
-                if (context.mounted) {
-                  Navigator.pop(context, results.isEmpty ? null : results);
-                }
-              },
-            ),
-            _tile(
-              context,
-              icon: Icons.chat_outlined,
-              color: const Color(0xFFFF6B9D),
-              label: '메신저에서 가져오기',
-              subtitle: '카카오톡 · 라인 · 텔레그램',
-              onTap: () {
-                // 빈 리스트 반환 = 메신저 이동 의도 (null = 취소와 구분)
-                Navigator.pop(context, <CapturedMedia>[]);
               },
             ),
             if (allowDocument)
@@ -138,9 +135,20 @@ class CaptureBottomSheet extends StatelessWidget {
                 label: '문서 가져오기',
                 subtitle: 'PDF, Word, Excel',
                 onTap: () async {
-                  final results = await MediaCaptureService.pickDocument(context);
-                  if (context.mounted) {
-                    Navigator.pop(context, results.isEmpty ? null : results);
+                  try {
+                    final results =
+                        await MediaCaptureService.pickDocument(context);
+                    if (context.mounted) {
+                      Navigator.pop(context, results.isEmpty ? null : results);
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      Navigator.pop(context, null);
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text('문서 오류: $e'),
+                        backgroundColor: Colors.red,
+                      ));
+                    }
                   }
                 },
               ),

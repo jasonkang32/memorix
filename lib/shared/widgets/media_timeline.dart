@@ -420,20 +420,19 @@ class _TimelineCardState extends State<_TimelineCard> {
             const SizedBox(height: 8),
           ],
 
-          // ── 메모 / 내용없음 (항상 표시) ──
-          Text(
-            hasNote ? note : '내용없음',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 13,
-              color: hasNote
-                  ? (isDark ? Colors.white70 : const Color(0xFF2D3748))
-                  : Colors.grey,
-              height: 1.4,
-              fontStyle: hasNote ? FontStyle.normal : FontStyle.italic,
+          // ── 메모 (주요 콘텐츠) ──
+          if (hasNote)
+            Text(
+              note,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+                color: isDark ? Colors.white.withValues(alpha: 0.87) : const Color(0xFF1A2030),
+                height: 1.5,
+              ),
             ),
-          ),
 
           const SizedBox(height: 8),
 
@@ -447,7 +446,7 @@ class _TimelineCardState extends State<_TimelineCard> {
                     size: 13, color: Colors.grey),
                 const SizedBox(width: 3),
                 const Text('동기화 대기',
-                    style: TextStyle(fontSize: 11, color: Colors.grey)),
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
               ],
             ],
           ),

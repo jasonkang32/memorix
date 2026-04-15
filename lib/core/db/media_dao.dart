@@ -123,6 +123,26 @@ class MediaDao {
     return rows.map(MediaItem.fromMap).toList();
   }
 
+  Future<void> updateOcrText(int id, String ocrText) async {
+    final db = await _db;
+    await db.update(
+      'media',
+      {'ocr_text': ocrText},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> moveToAlbum(int mediaId, int? albumId) async {
+    final db = await _db;
+    await db.update(
+      'media',
+      {'album_id': albumId},
+      where: 'id = ?',
+      whereArgs: [mediaId],
+    );
+  }
+
   Future<void> markSynced(int id, String driveFileId) async {
     final db = await _db;
     await db.update(
@@ -236,11 +256,12 @@ class MediaDao {
           m.note LIKE ? OR
           m.region LIKE ? OR
           m.country_code LIKE ? OR
-          t.label LIKE ?
+          t.label LIKE ? OR
+          m.ocr_text LIKE ?
         )
       ORDER BY m.taken_at DESC
       LIMIT 100
-    ''', [space, q, q, q, q, q]);
+    ''', [space, q, q, q, q, q, q]);
     return rows.map(MediaItem.fromMap).toList();
   }
 }

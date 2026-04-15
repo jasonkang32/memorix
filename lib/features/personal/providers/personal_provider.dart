@@ -11,9 +11,6 @@ final albumListProvider = FutureProvider<List<Album>>((ref) async {
   return _albumDao.findAll();
 });
 
-final selectedAlbumIdProvider = StateProvider<int?>((ref) => null);
-
 final personalMediaProvider = FutureProvider<List<MediaItem>>((ref) async {
-  final albumId = ref.watch(selectedAlbumIdProvider);
-  return _mediaDao.findPersonal(albumId: albumId);
+  return _mediaDao.findPersonal();
 });

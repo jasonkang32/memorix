@@ -24,7 +24,7 @@ class AppTheme {
           backgroundColor: _surface,
           surfaceTintColor: Colors.transparent,
           titleTextStyle: const TextStyle(
-            fontSize: 20,
+            fontSize: 22,
             fontWeight: FontWeight.w700,
             color: Color(0xFF0E1117),
             letterSpacing: -0.3,
@@ -33,7 +33,7 @@ class AppTheme {
         ),
         navigationBarTheme: NavigationBarThemeData(
           elevation: 0,
-          height: 68,
+          height: 72,
           backgroundColor: Colors.white,
           surfaceTintColor: Colors.transparent,
           shadowColor: Colors.black12,
@@ -41,22 +41,22 @@ class AppTheme {
           labelTextStyle: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
               return const TextStyle(
-                fontSize: 11,
+                fontSize: 13,
                 fontWeight: FontWeight.w700,
                 color: _primary,
               );
             }
             return const TextStyle(
-              fontSize: 11,
+              fontSize: 13,
               fontWeight: FontWeight.w500,
               color: Color(0xFF8A9099),
             );
           }),
           iconTheme: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return const IconThemeData(color: _primary, size: 24);
+              return const IconThemeData(color: _primary, size: 26);
             }
-            return const IconThemeData(color: Color(0xFF8A9099), size: 24);
+            return const IconThemeData(color: Color(0xFF8A9099), size: 26);
           }),
         ),
         floatingActionButtonTheme: FloatingActionButtonThemeData(
@@ -79,7 +79,7 @@ class AppTheme {
         chipTheme: ChipThemeData(
           backgroundColor: const Color(0xFFECEFF3),
           selectedColor: _primary.withValues(alpha: 0.15),
-          labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+          labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
@@ -100,14 +100,23 @@ class AppTheme {
             borderRadius: BorderRadius.circular(12),
             borderSide: const BorderSide(color: _primary, width: 1.5),
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          labelStyle: const TextStyle(fontSize: 15),
+          hintStyle: const TextStyle(fontSize: 15),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         ),
         textTheme: const TextTheme(
-          headlineLarge: TextStyle(fontWeight: FontWeight.w800, letterSpacing: -0.5),
-          headlineMedium: TextStyle(fontWeight: FontWeight.w700, letterSpacing: -0.3),
-          titleLarge: TextStyle(fontWeight: FontWeight.w700, letterSpacing: -0.2),
-          titleMedium: TextStyle(fontWeight: FontWeight.w600),
-          bodyMedium: TextStyle(fontSize: 14, height: 1.5),
+          headlineLarge: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, letterSpacing: -0.5),
+          headlineMedium: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -0.3),
+          headlineSmall: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+          titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.2),
+          titleMedium: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+          titleSmall: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          bodyLarge: TextStyle(fontSize: 16, height: 1.6),
+          bodyMedium: TextStyle(fontSize: 15, height: 1.6),
+          bodySmall: TextStyle(fontSize: 13, height: 1.5),
+          labelLarge: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          labelMedium: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+          labelSmall: TextStyle(fontSize: 12),
         ),
         dividerTheme: const DividerThemeData(
           color: Color(0xFFECEFF3),
@@ -132,7 +141,7 @@ class AppTheme {
           backgroundColor: _surfaceDark,
           surfaceTintColor: Colors.transparent,
           titleTextStyle: TextStyle(
-            fontSize: 20,
+            fontSize: 22,
             fontWeight: FontWeight.w700,
             color: Colors.white,
             letterSpacing: -0.3,
@@ -141,29 +150,29 @@ class AppTheme {
         ),
         navigationBarTheme: NavigationBarThemeData(
           elevation: 0,
-          height: 68,
+          height: 72,
           backgroundColor: Color(0xFF161B22),
           surfaceTintColor: Colors.transparent,
           indicatorColor: Color(0xFF00C896),
           labelTextStyle: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
               return const TextStyle(
-                fontSize: 11,
+                fontSize: 13,
                 fontWeight: FontWeight.w700,
                 color: _primary,
               );
             }
             return const TextStyle(
-              fontSize: 11,
+              fontSize: 13,
               fontWeight: FontWeight.w500,
               color: Color(0xFF606672),
             );
           }),
           iconTheme: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return const IconThemeData(color: _primary, size: 24);
+              return const IconThemeData(color: _primary, size: 26);
             }
-            return const IconThemeData(color: Color(0xFF606672), size: 24);
+            return const IconThemeData(color: Color(0xFF606672), size: 26);
           }),
         ),
         floatingActionButtonTheme: FloatingActionButtonThemeData(
@@ -186,7 +195,7 @@ class AppTheme {
         chipTheme: ChipThemeData(
           backgroundColor: const Color(0xFF1E2530),
           selectedColor: _primary.withValues(alpha: 0.2),
-          labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+          labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
@@ -207,14 +216,23 @@ class AppTheme {
             borderRadius: BorderRadius.circular(12),
             borderSide: const BorderSide(color: _primary, width: 1.5),
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          labelStyle: const TextStyle(fontSize: 15),
+          hintStyle: const TextStyle(fontSize: 15),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         ),
         textTheme: const TextTheme(
-          headlineLarge: TextStyle(fontWeight: FontWeight.w800, letterSpacing: -0.5),
-          headlineMedium: TextStyle(fontWeight: FontWeight.w700, letterSpacing: -0.3),
-          titleLarge: TextStyle(fontWeight: FontWeight.w700, letterSpacing: -0.2),
-          titleMedium: TextStyle(fontWeight: FontWeight.w600),
-          bodyMedium: TextStyle(fontSize: 14, height: 1.5),
+          headlineLarge: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, letterSpacing: -0.5),
+          headlineMedium: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -0.3),
+          headlineSmall: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+          titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.2),
+          titleMedium: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+          titleSmall: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          bodyLarge: TextStyle(fontSize: 16, height: 1.6),
+          bodyMedium: TextStyle(fontSize: 15, height: 1.6),
+          bodySmall: TextStyle(fontSize: 13, height: 1.5),
+          labelLarge: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          labelMedium: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+          labelSmall: TextStyle(fontSize: 12),
         ),
         dividerTheme: const DividerThemeData(
           color: Color(0xFF262D37),

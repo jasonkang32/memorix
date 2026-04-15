@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   cupertino_icons: ^1.0.8
 
   # 상태관리
@@ -35,6 +37,8 @@ dependencies:
 
   # AI 자동 태깅
   google_mlkit_image_labeling: ^0.13.0
+  # OCR 텍스트 인식
+  google_mlkit_text_recognition: ^0.14.0
 
   # PDF 보고서 (온디바이스)
   pdf: ^3.11.1
