@@ -30,6 +30,7 @@ class MediaSaveService {
     String countryCode = '',
     String region = '',
     int? albumId,
+    int? jobId,
     String batchId = '',
   }) async {
     // EXIF 위치 우선, 없으면 파라미터 사용
@@ -63,6 +64,7 @@ class MediaSaveService {
       countryCode: finalCountry,
       region: finalRegion,
       albumId: albumId,
+      jobId: jobId,
       latitude: lat,
       longitude: lng,
       takenAt: takenAt,
@@ -87,17 +89,19 @@ class MediaSaveService {
     required List<CapturedMedia> captured,
     required MediaSpace space,
     int? albumId,
+    int? jobId,
+    void Function(int done, int total)? onProgress,
   }) async {
-    // 여러 개를 한번에 저장할 때 같은 batchId 부여
     final batchId = captured.length > 1 ? _uuid.v4() : '';
     final results = <MediaSaveResult>[];
-    for (final c in captured) {
+    for (int i = 0; i < captured.length; i++) {
       try {
-        results.add(
-            await save(captured: c, space: space, albumId: albumId, batchId: batchId));
+        results.add(await save(
+            captured: captured[i], space: space, albumId: albumId, jobId: jobId, batchId: batchId));
+        onProgress?.call(i + 1, captured.length);
       } catch (e, stack) {
-        // 개별 항목 저장 실패 시 로그 후 건너뜀 — 나머지는 계속 저장
         developer.log('MediaSaveService: 항목 저장 실패: $e', error: e, stackTrace: stack, name: 'memorix');
+        onProgress?.call(i + 1, captured.length);
       }
     }
     return results;

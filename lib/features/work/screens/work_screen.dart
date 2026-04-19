@@ -6,6 +6,7 @@ import '../../../core/db/media_dao.dart';
 import '../../../core/services/media_capture_service.dart';
 import '../../../core/services/media_save_service.dart';
 import '../../../core/services/report_service.dart';
+import '../../../features/home/providers/home_provider.dart';
 import '../../../shared/models/media_item.dart';
 import '../../../shared/widgets/capture_bottom_sheet.dart';
 import '../../../shared/widgets/media_timeline.dart';
@@ -54,7 +55,7 @@ class _WorkScreenState extends ConsumerState<WorkScreen> {
     return Scaffold(
       appBar: _searching ? _searchBar() : _normalBar(filterActive),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _onAddMedia(context),
+        onPressed: () => _onFabPressed(context),
         child: const Icon(Icons.add_a_photo_outlined),
       ),
       body: _searching
@@ -186,18 +187,56 @@ class _WorkScreenState extends ConsumerState<WorkScreen> {
     );
   }
 
+  Future<void> _onFabPressed(BuildContext context) async {
+    await _onAddMedia(context);
+  }
+
   Future<void> _onAddMedia(BuildContext context) async {
-    List<CapturedMedia>? capturedList =
+    final List<CapturedMedia>? capturedList =
         await CaptureBottomSheet.show(context, allowDocument: true);
 
     if (capturedList == null || capturedList.isEmpty || !context.mounted) return;
+
+    final total = capturedList.length;
+    final progressNotifier = ValueNotifier<int>(0);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: ValueListenableBuilder<int>(
+            valueListenable: progressNotifier,
+            builder: (_, done, __) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+                Text(total > 1 ? '$done / $total 저장 중...' : '저장 중...'),
+                if (total > 1) ...[
+                  const SizedBox(height: 8),
+                  LinearProgressIndicator(value: total > 0 ? done / total : 0),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
 
     try {
       final results = await MediaSaveService.saveAll(
         captured: capturedList,
         space: MediaSpace.work,
+        jobId: null,
+        onProgress: (done, _) => progressNotifier.value = done,
       );
+
+      if (context.mounted) Navigator.of(context).pop();
+
       ref.invalidate(workMediaProvider);
+      ref.invalidate(homeSummaryProvider);
 
       if (!context.mounted) return;
 
@@ -232,14 +271,19 @@ class _WorkScreenState extends ConsumerState<WorkScreen> {
           builder: (_) => MediaDetailScreen(items: savedItems, initialIndex: 0),
         ),
       );
-      // 편집 여부와 무관하게 복귀 시 무조건 새로고침
-      if (context.mounted) ref.invalidate(workMediaProvider);
+      if (context.mounted) {
+        ref.invalidate(workMediaProvider);
+        ref.invalidate(homeSummaryProvider);
+      }
     } catch (e) {
+      if (context.mounted) Navigator.of(context).pop();
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('미디어 저장 실패: $e'),
         backgroundColor: Colors.red,
       ));
+    } finally {
+      progressNotifier.dispose();
     }
   }
 

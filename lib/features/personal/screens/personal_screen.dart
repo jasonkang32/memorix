@@ -8,6 +8,7 @@ import '../../../core/db/media_dao.dart';
 import '../../../core/services/media_capture_service.dart';
 import '../../../core/services/media_save_service.dart';
 import '../../../features/auth/providers/personal_lock_provider.dart';
+import '../../../features/home/providers/home_provider.dart';
 import '../../../shared/models/album.dart';
 import '../../../shared/models/media_item.dart';
 import '../../../shared/widgets/capture_bottom_sheet.dart';
@@ -64,6 +65,12 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
 
     return Scaffold(
       appBar: _searching ? _searchBar() : _normalBar(),
+      floatingActionButton: _searching
+          ? null
+          : FloatingActionButton(
+              onPressed: () => _onAddMedia(context, ref),
+              child: const Icon(Icons.add_a_photo_outlined),
+            ),
       body: _searching
           ? _buildSearchBody()
           : _albumGridMode
@@ -148,11 +155,6 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
           icon: const Icon(Icons.create_new_folder_outlined),
           onPressed: () => _showCreateAlbumDialog(context, ref),
         ),
-        if (!_albumGridMode)
-          IconButton(
-            icon: const Icon(Icons.add_a_photo_outlined),
-            onPressed: () => _onAddMedia(context, ref),
-          ),
       ],
     );
   }
@@ -225,27 +227,83 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
 
     if (capturedList == null || capturedList.isEmpty || !context.mounted) return;
 
-    final results = await MediaSaveService.saveAll(
-      captured: capturedList,
-      space: MediaSpace.personal,
-    );
-    ref.invalidate(personalMediaProvider);
+    final total = capturedList.length;
+    final progressNotifier = ValueNotifier<int>(0);
 
-    if (!context.mounted) return;
-    if (results.length > 1) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('${results.length}개 저장됨. 첫 번째 항목을 편집합니다.'),
-        duration: const Duration(seconds: 2),
-      ));
-    }
-    final savedItems = results.map((r) => r.item).toList();
-    await Navigator.push<dynamic>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => MediaDetailScreen(items: savedItems, initialIndex: 0),
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: ValueListenableBuilder<int>(
+            valueListenable: progressNotifier,
+            builder: (_, done, __) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+                Text(total > 1 ? '$done / $total 저장 중...' : '저장 중...'),
+                if (total > 1) ...[
+                  const SizedBox(height: 8),
+                  LinearProgressIndicator(value: total > 0 ? done / total : 0),
+                ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
-    if (context.mounted) ref.invalidate(personalMediaProvider);
+
+    try {
+      final results = await MediaSaveService.saveAll(
+        captured: capturedList,
+        space: MediaSpace.personal,
+        onProgress: (done, _) => progressNotifier.value = done,
+      );
+
+      if (context.mounted) Navigator.of(context).pop();
+
+      ref.invalidate(personalMediaProvider);
+      ref.invalidate(homeSummaryProvider);
+
+      if (!context.mounted) return;
+
+      if (results.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('저장된 항목이 없습니다.'),
+          backgroundColor: Colors.orange,
+        ));
+        return;
+      }
+
+      if (results.length > 1) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('${results.length}개 저장됨. 첫 번째 항목을 편집합니다.'),
+          duration: const Duration(seconds: 2),
+        ));
+      }
+      final savedItems = results.map((r) => r.item).toList();
+      await Navigator.push<dynamic>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MediaDetailScreen(items: savedItems, initialIndex: 0),
+        ),
+      );
+      if (context.mounted) {
+        ref.invalidate(personalMediaProvider);
+        ref.invalidate(homeSummaryProvider);
+      }
+    } catch (e) {
+      if (context.mounted) Navigator.of(context).pop();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('미디어 저장 실패: $e'),
+        backgroundColor: Colors.red,
+      ));
+    } finally {
+      progressNotifier.dispose();
+    }
   }
 
   void _openViewer(BuildContext context, List<MediaItem> items, int index) {
