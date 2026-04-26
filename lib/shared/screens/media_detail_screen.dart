@@ -49,7 +49,7 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
   bool _locating = false;
   bool _ocrRunning = false;
   late List<MediaItem> _previewItems; // 삭제 반영용 로컬 복사본
-  late DateTime _eventDate;   // 이벤트 날짜 (takenAt 기반, 편집 가능)
+  late DateTime _eventDate; // 이벤트 날짜 (takenAt 기반, 편집 가능)
   late DateTime _initialEventDate;
 
   final _mediaDao = MediaDao();
@@ -64,7 +64,8 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
     return _noteCtrl.text.trim() != item.note.trim() ||
         _countryCtrl.text.trim() != item.countryCode.trim() ||
         _regionCtrl.text.trim() != item.region.trim() ||
-        _eventDate.millisecondsSinceEpoch != _initialEventDate.millisecondsSinceEpoch ||
+        _eventDate.millisecondsSinceEpoch !=
+            _initialEventDate.millisecondsSinceEpoch ||
         !_setEquals(_selectedTagIds, _initialTagIds) ||
         !_setEquals(_selectedPersonIds, _initialPersonIds);
   }
@@ -86,8 +87,9 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
     if (item.space == MediaSpace.work &&
         item.countryCode.isEmpty &&
         item.region.isEmpty) {
-      WidgetsBinding.instance
-          .addPostFrameCallback((_) => _autoFillLocation(silent: true));
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _autoFillLocation(silent: true),
+      );
     }
   }
 
@@ -99,7 +101,7 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
 
     List<Person> allPeople = [];
     Set<int> selPersonIds = {};
-    if (item.space == MediaSpace.personal) {
+    if (item.space == MediaSpace.secret) {
       allPeople = await _peopleDao.findAll();
       if (item.id != null) {
         final selPeople = await _peopleDao.findByMediaId(item.id!);
@@ -139,19 +141,18 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
         if (placemarks.isNotEmpty && mounted) {
           final p = placemarks.first;
           _countryCtrl.text = p.country ?? p.isoCountryCode ?? '';
-          _regionCtrl.text =
-              p.administrativeArea ?? p.locality ?? '';
+          _regionCtrl.text = p.administrativeArea ?? p.locality ?? '';
         }
       } else if (!silent && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('사진에 GPS 정보가 없습니다')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('사진에 GPS 정보가 없습니다')));
       }
     } catch (_) {
       if (!silent && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('위치 정보를 읽을 수 없습니다')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('위치 정보를 읽을 수 없습니다')));
       }
     } finally {
       if (mounted) setState(() => _locating = false);
@@ -165,7 +166,8 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
       if (vals is IfdRatios) {
         final r = vals.ratios;
         if (r.length < 3) return null;
-        double d = r[0].numerator / r[0].denominator +
+        double d =
+            r[0].numerator / r[0].denominator +
             r[1].numerator / r[1].denominator / 60 +
             r[2].numerator / r[2].denominator / 3600;
         if (ref == 'S' || ref == 'W') d = -d;
@@ -255,8 +257,11 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
 
     if (updated.id != null) {
       await _tagDao.setMediaTags(updated.id!, _selectedTagIds.toList());
-      if (updated.space == MediaSpace.personal) {
-        await _peopleDao.setMediaPeople(updated.id!, _selectedPersonIds.toList());
+      if (updated.space == MediaSpace.secret) {
+        await _peopleDao.setMediaPeople(
+          updated.id!,
+          _selectedPersonIds.toList(),
+        );
       }
     }
 
@@ -279,7 +284,10 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
         title: const Text('삭제'),
         content: const Text('이 미디어를 삭제할까요? 파일도 함께 삭제됩니다.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -310,7 +318,8 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
     // 이미 존재하는 태그면 선택 상태로 전환
     final existing = _allTags.firstWhere(
       (t) => t.label == label,
-      orElse: () => Tag(space: item.space, key: '', label: '', color: '', icon: ''),
+      orElse: () =>
+          Tag(space: item.space, key: '', label: '', color: '', icon: ''),
     );
     if (existing.id != null) {
       setState(() => _selectedTagIds.add(existing.id!));
@@ -364,8 +373,10 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
               ),
               TextButton(
                 onPressed: () => Navigator.pop(ctx, 'discard'),
-                child: const Text('저장 안 함',
-                    style: TextStyle(color: Colors.grey)),
+                child: const Text(
+                  '저장 안 함',
+                  style: TextStyle(color: Colors.grey),
+                ),
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(ctx, 'save'),
@@ -387,184 +398,199 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
         // 'cancel' → 아무것도 안 함
       },
       child: Scaffold(
-      appBar: AppBar(
-        title: Text(isWork ? 'Work 미디어' : 'Personal 미디어'),
-        actions: [
-          IconButton(
-            icon: _saving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.check),
-            onPressed: _saving ? null : _save,
+        appBar: AppBar(
+          foregroundColor: Colors.black87,
+          actionsIconTheme: const IconThemeData(
+            color: Color(0xFF1A73E8),
+            size: 28,
           ),
-        ],
-      ),
-      body: SafeArea(
-        child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // 미디어 미리보기 (여러 장인 경우 PageView)
-          _buildPreview(),
-          const SizedBox(height: 8),
-          _MediaMeta(item: item),
-          const SizedBox(height: 16),
+          title: Text(isWork ? 'Work 미디어' : 'Personal 미디어'),
+          actions: [
+            IconButton(
+              icon: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.check),
+              onPressed: _saving ? null : _save,
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              // 미디어 미리보기 (여러 장인 경우 PageView)
+              _buildPreview(),
+              const SizedBox(height: 8),
+              _MediaMeta(item: item),
+              const SizedBox(height: 16),
 
-          // ── 이벤트 날짜 ──
-          _EventDateRow(
-            date: _eventDate,
-            onTap: _pickEventDate,
-          ),
-          const SizedBox(height: 16),
+              // ── 이벤트 날짜 ──
+              _EventDateRow(date: _eventDate, onTap: _pickEventDate),
+              const SizedBox(height: 16),
 
-          // Work 위치 필드 (EXIF 자동 입력됨, 수동 수정 가능)
-          if (isWork) ...[
-            // 위치 자동입력 버튼
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('위치',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700)),
-                TextButton.icon(
-                  onPressed: _locating ? null : _autoFillLocation,
-                  icon: _locating
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.my_location, size: 16),
-                  label: Text(_locating ? '읽는 중...' : 'GPS 자동 입력',
-                      style: const TextStyle(fontSize: 12)),
-                  style: TextButton.styleFrom(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
+              // Work 위치 필드 (EXIF 자동 입력됨, 수동 수정 가능)
+              if (isWork) ...[
+                // 위치 자동입력 버튼
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '위치',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: _locating ? null : _autoFillLocation,
+                      icon: _locating
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.my_location, size: 16),
+                      label: Text(
+                        _locating ? '읽는 중...' : 'GPS 자동 입력',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _countryCtrl,
+                        decoration: const InputDecoration(
+                          labelText: '국가',
+                          hintText: '대한민국',
+                          prefixIcon: Icon(Icons.flag_outlined, size: 18),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: _regionCtrl,
+                        decoration: const InputDecoration(
+                          labelText: '지역',
+                          hintText: '서울',
+                          prefixIcon: Icon(
+                            Icons.location_on_outlined,
+                            size: 18,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // 메모
+              TextField(
+                controller: _noteCtrl,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: '메모',
+                  hintText: '메모를 입력하세요',
+                  alignLabelWithHint: true,
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // ── OCR 인식 텍스트 (사진·문서만) ──
+              if (item.mediaType != MediaType.video) ...[
+                const SizedBox(height: 20),
+                _OcrSection(item: item, isRunning: _ocrRunning, onRun: _runOcr),
+              ],
+              const SizedBox(height: 20),
+
+              // 태그 섹션
+              _TagSection(
+                allTags: _allTags,
+                selectedTagIds: _selectedTagIds,
+                tagInputCtrl: _tagInputCtrl,
+                onToggle: (id) => setState(() {
+                  if (_selectedTagIds.contains(id)) {
+                    _selectedTagIds.remove(id);
+                  } else {
+                    _selectedTagIds.add(id);
+                  }
+                }),
+                onAddCustom: _addCustomTag,
+                colorScheme: cs,
+              ),
+
+              // 인물 (Personal 전용)
+              if (!isWork) ...[
+                const SizedBox(height: 20),
+                Text(
+                  '인물',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                PeopleChips(
+                  allPeople: _allPeople,
+                  selectedIds: _selectedPersonIds,
+                  onChanged: (ids) {
+                    _peopleDao.findAll().then((people) {
+                      setState(() {
+                        _allPeople = people;
+                        _selectedPersonIds = ids;
+                      });
+                    });
+                  },
                 ),
               ],
-            ),
-            const SizedBox(height: 4),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _countryCtrl,
-                    decoration: const InputDecoration(
-                      labelText: '국가',
-                      hintText: '대한민국',
-                      prefixIcon: Icon(Icons.flag_outlined, size: 18),
+              const SizedBox(height: 32),
+
+              // ── 삭제 버튼 (하단) ──
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _delete,
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.red,
+                    size: 18,
+                  ),
+                  label: const Text(
+                    '미디어 삭제',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.red, width: 1),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _regionCtrl,
-                    decoration: const InputDecoration(
-                      labelText: '지역',
-                      hintText: '서울',
-                      prefixIcon: Icon(Icons.location_on_outlined, size: 18),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-          ],
-
-          // 메모
-          TextField(
-            controller: _noteCtrl,
-            maxLines: 4,
-            decoration: const InputDecoration(
-              labelText: '메모',
-              hintText: '메모를 입력하세요',
-              alignLabelWithHint: true,
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // ── OCR 인식 텍스트 (사진·문서만) ──
-          if (item.mediaType != MediaType.video) ...[
-            const SizedBox(height: 20),
-            _OcrSection(
-              item: item,
-              isRunning: _ocrRunning,
-              onRun: _runOcr,
-            ),
-          ],
-          const SizedBox(height: 20),
-
-          // 태그 섹션
-          _TagSection(
-            allTags: _allTags,
-            selectedTagIds: _selectedTagIds,
-            tagInputCtrl: _tagInputCtrl,
-            onToggle: (id) => setState(() {
-              if (_selectedTagIds.contains(id)) {
-                _selectedTagIds.remove(id);
-              } else {
-                _selectedTagIds.add(id);
-              }
-            }),
-            onAddCustom: _addCustomTag,
-            colorScheme: cs,
-          ),
-
-          // 인물 (Personal 전용)
-          if (!isWork) ...[
-            const SizedBox(height: 20),
-            Text('인물',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            PeopleChips(
-              allPeople: _allPeople,
-              selectedIds: _selectedPersonIds,
-              onChanged: (ids) {
-                _peopleDao.findAll().then((people) {
-                  setState(() {
-                    _allPeople = people;
-                    _selectedPersonIds = ids;
-                  });
-                });
-              },
-            ),
-          ],
-          const SizedBox(height: 32),
-
-          // ── 삭제 버튼 (하단) ──
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _delete,
-              icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
-              label: const Text(
-                '미디어 삭제',
-                style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
               ),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Colors.red, width: 1),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
+              const SizedBox(height: 24),
+            ],
           ),
-          const SizedBox(height: 24),
-        ],
-      ),
-      ),
-    ), // PopScope
+        ),
+      ), // PopScope
     );
   }
 
@@ -590,7 +616,8 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
             foregroundColor: Colors.grey,
             side: BorderSide(color: Colors.grey.shade300, width: 1),
             shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12)),
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
         ),
       ],
@@ -617,10 +644,9 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('미디어 저장 실패: $e'),
-        backgroundColor: Colors.red,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('미디어 저장 실패: $e'), backgroundColor: Colors.red),
+      );
     }
   }
 
@@ -652,8 +678,10 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
             children: [
               const Icon(Icons.description, size: 48, color: Colors.grey),
               const SizedBox(height: 8),
-              Text(cur.filePath.split('/').last,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Text(
+                cur.filePath.split('/').last,
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
             ],
           ),
         ),
@@ -669,7 +697,9 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
             context,
             MaterialPageRoute(
               builder: (_) => MediaViewerScreen(
-                  items: List.from(allItems), initialIndex: index),
+                items: List.from(allItems),
+                initialIndex: index,
+              ),
             ),
           );
           if (result == 'deleted') _refreshPreviewItems();
@@ -690,7 +720,10 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
                   left: 10,
                   top: 10,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black54,
                       borderRadius: BorderRadius.circular(8),
@@ -698,9 +731,10 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
                     child: Text(
                       '${index + 1} / ${allItems.length}',
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600),
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
@@ -714,13 +748,21 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
                     color: Colors.black54,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.fullscreen, color: Colors.white, size: 18),
+                  child: const Icon(
+                    Icons.fullscreen,
+                    color: Colors.white,
+                    size: 18,
+                  ),
                 ),
               ),
               // 영상 play 오버레이
               if (cur.mediaType == MediaType.video)
                 const Center(
-                  child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 52),
+                  child: Icon(
+                    Icons.play_circle_fill,
+                    color: Colors.white70,
+                    size: 52,
+                  ),
                 ),
             ],
           ),
@@ -762,11 +804,12 @@ class _TagSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('태그',
-            style: Theme.of(context)
-                .textTheme
-                .titleSmall
-                ?.copyWith(fontWeight: FontWeight.w700)),
+        Text(
+          '태그',
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+        ),
         const SizedBox(height: 10),
 
         // 기존 태그 선택 (통일 색상: 에메랄드)
@@ -781,11 +824,12 @@ class _TagSection extends StatelessWidget {
               onTap: () => onToggle(tag.id!),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
-                  color: selected
-                      ? primary
-                      : primary.withValues(alpha: 0.12),
+                  color: selected ? primary : primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: selected ? primary : primary,
@@ -816,8 +860,10 @@ class _TagSection extends StatelessWidget {
                   hintText: '태그 직접 입력',
                   hintStyle: const TextStyle(fontSize: 13),
                   prefixIcon: const Icon(Icons.label_outline, size: 18),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                   isDense: true,
                 ),
                 onSubmitted: (_) => onAddCustom(),
@@ -827,9 +873,13 @@ class _TagSection extends StatelessWidget {
             FilledButton(
               onPressed: onAddCustom,
               style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               child: const Text('추가', style: TextStyle(fontSize: 13)),
             ),
@@ -838,7 +888,6 @@ class _TagSection extends StatelessWidget {
       ],
     );
   }
-
 }
 
 // ── 이벤트 날짜 행 ───────────────────────────────────────────
@@ -861,10 +910,9 @@ class _EventDateRow extends StatelessWidget {
       children: [
         Text(
           '이벤트 날짜',
-          style: Theme.of(context)
-              .textTheme
-              .titleSmall
-              ?.copyWith(fontWeight: FontWeight.w700),
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 8),
         InkWell(
@@ -916,8 +964,9 @@ class _MediaMeta extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sizeKb = StorageService.fileSizeKb(item.filePath);
-    final sizeLabel =
-        sizeKb >= 1024 ? '${(sizeKb / 1024).toStringAsFixed(1)} MB' : '$sizeKb KB';
+    final sizeLabel = sizeKb >= 1024
+        ? '${(sizeKb / 1024).toStringAsFixed(1)} MB'
+        : '$sizeKb KB';
 
     return Wrap(
       spacing: 12,
@@ -927,9 +976,10 @@ class _MediaMeta extends StatelessWidget {
         if (item.countryCode.isNotEmpty || item.region.isNotEmpty)
           _metaItem(
             Icons.location_on_outlined,
-            [item.countryCode, item.region]
-                .where((s) => s.isNotEmpty)
-                .join(' · '),
+            [
+              item.countryCode,
+              item.region,
+            ].where((s) => s.isNotEmpty).join(' · '),
           ),
       ],
     );
@@ -977,10 +1027,9 @@ class _OcrSection extends StatelessWidget {
             Expanded(
               child: Text(
                 'OCR 텍스트 인식',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w700),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
               ),
             ),
             // 실행 버튼
@@ -998,7 +1047,10 @@ class _OcrSection extends StatelessWidget {
                 style: const TextStyle(fontSize: 13),
               ),
               style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
             ),
@@ -1012,9 +1064,7 @@ class _OcrSection extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF1A2030)
-                  : const Color(0xFFF0F8FF),
+              color: isDark ? const Color(0xFF1A2030) : const Color(0xFFF0F8FF),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: isDark
@@ -1027,9 +1077,11 @@ class _OcrSection extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.format_quote,
-                        size: 14,
-                        color: cs.primary.withValues(alpha: 0.6)),
+                    Icon(
+                      Icons.format_quote,
+                      size: 14,
+                      color: cs.primary.withValues(alpha: 0.6),
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       '인식된 텍스트 (${item.ocrText.length}자)',
@@ -1051,9 +1103,11 @@ class _OcrSection extends StatelessWidget {
                           ),
                         );
                       },
-                      child: Icon(Icons.copy_outlined,
-                          size: 16,
-                          color: cs.primary.withValues(alpha: 0.7)),
+                      child: Icon(
+                        Icons.copy_outlined,
+                        size: 16,
+                        color: cs.primary.withValues(alpha: 0.7),
+                      ),
                     ),
                   ],
                 ),
@@ -1074,9 +1128,7 @@ class _OcrSection extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 16),
             decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF1A2030)
-                  : const Color(0xFFF8F9FA),
+              color: isDark ? const Color(0xFF1A2030) : const Color(0xFFF8F9FA),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: isDark
@@ -1086,14 +1138,20 @@ class _OcrSection extends StatelessWidget {
             ),
             child: Column(
               children: [
-                Icon(Icons.text_snippet_outlined,
-                    size: 32,
-                    color: Colors.grey.withValues(alpha: 0.5)),
+                Icon(
+                  Icons.text_snippet_outlined,
+                  size: 32,
+                  color: Colors.grey.withValues(alpha: 0.5),
+                ),
                 const SizedBox(height: 8),
                 const Text(
                   '인식된 텍스트가 없습니다\n"텍스트 인식" 버튼을 눌러 실행하세요',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 13, color: Colors.grey, height: 1.5),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey,
+                    height: 1.5,
+                  ),
                 ),
               ],
             ),

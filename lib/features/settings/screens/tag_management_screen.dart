@@ -15,7 +15,7 @@ class _TagManagementScreenState extends State<TagManagementScreen>
   late final TabController _tabCtrl;
   final _tagDao = TagDao();
   List<Tag> _workTags = [];
-  List<Tag> _personalTags = [];
+  List<Tag> _secretTags = [];
 
   @override
   void initState() {
@@ -35,7 +35,7 @@ class _TagManagementScreenState extends State<TagManagementScreen>
     if (!mounted) return;
     setState(() {
       _workTags = all.where((t) => t.space == MediaSpace.work).toList();
-      _personalTags = all.where((t) => t.space == MediaSpace.personal).toList();
+      _secretTags = all.where((t) => t.space == MediaSpace.secret).toList();
     });
   }
 
@@ -52,9 +52,9 @@ class _TagManagementScreenState extends State<TagManagementScreen>
 
   Future<void> _deleteTag(Tag tag) async {
     if (!tag.isCustom) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('기본 태그는 삭제할 수 없습니다')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('기본 태그는 삭제할 수 없습니다')));
       return;
     }
     final ok = await showDialog<bool>(
@@ -63,7 +63,10 @@ class _TagManagementScreenState extends State<TagManagementScreen>
         title: const Text('태그 삭제'),
         content: Text('"${tag.label}" 태그를 삭제할까요?\n해당 태그가 붙은 미디어에서도 제거됩니다.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -87,14 +90,13 @@ class _TagManagementScreenState extends State<TagManagementScreen>
           controller: _tabCtrl,
           tabs: const [
             Tab(text: '💼 Work'),
-            Tab(text: '🏠 Personal'),
+            Tab(text: '🔒 Secret'),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton.small(
-        onPressed: () => _addTag(
-          _tabCtrl.index == 0 ? MediaSpace.work : MediaSpace.personal,
-        ),
+        onPressed: () =>
+            _addTag(_tabCtrl.index == 0 ? MediaSpace.work : MediaSpace.secret),
         tooltip: '태그 추가',
         child: const Icon(Icons.add),
       ),
@@ -102,7 +104,7 @@ class _TagManagementScreenState extends State<TagManagementScreen>
         controller: _tabCtrl,
         children: [
           _TagList(tags: _workTags, onDelete: _deleteTag),
-          _TagList(tags: _personalTags, onDelete: _deleteTag),
+          _TagList(tags: _secretTags, onDelete: _deleteTag),
         ],
       ),
     );
@@ -182,11 +184,29 @@ class _AddTagDialogState extends State<_AddTagDialog> {
   String _selectedIcon = '🏷️';
   String _selectedColor = '#607D8B';
 
-  static const _icons = ['🏷️', '⭐', '📌', '🔥', '💡', '🎯', '📎', '🔖', '✅', '⚡'];
+  static const _icons = [
+    '🏷️',
+    '⭐',
+    '📌',
+    '🔥',
+    '💡',
+    '🎯',
+    '📎',
+    '🔖',
+    '✅',
+    '⚡',
+  ];
   static const _colors = [
-    '#607D8B', '#F44336', '#E91E63', '#9C27B0',
-    '#3F51B5', '#2196F3', '#009688', '#4CAF50',
-    '#FF9800', '#795548',
+    '#607D8B',
+    '#F44336',
+    '#E91E63',
+    '#9C27B0',
+    '#3F51B5',
+    '#2196F3',
+    '#009688',
+    '#4CAF50',
+    '#FF9800',
+    '#795548',
   ];
 
   @override
@@ -215,22 +235,28 @@ class _AddTagDialogState extends State<_AddTagDialog> {
           const SizedBox(height: 6),
           Wrap(
             spacing: 8,
-            children: _icons.map((icon) => GestureDetector(
-              onTap: () => setState(() => _selectedIcon = icon),
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: _selectedIcon == icon
-                      ? Theme.of(context).colorScheme.primaryContainer
-                      : null,
-                  borderRadius: BorderRadius.circular(8),
-                  border: _selectedIcon == icon
-                      ? Border.all(color: Theme.of(context).colorScheme.primary)
-                      : null,
-                ),
-                child: Text(icon, style: const TextStyle(fontSize: 20)),
-              ),
-            )).toList(),
+            children: _icons
+                .map(
+                  (icon) => GestureDetector(
+                    onTap: () => setState(() => _selectedIcon = icon),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: _selectedIcon == icon
+                            ? Theme.of(context).colorScheme.primaryContainer
+                            : null,
+                        borderRadius: BorderRadius.circular(8),
+                        border: _selectedIcon == icon
+                            ? Border.all(
+                                color: Theme.of(context).colorScheme.primary,
+                              )
+                            : null,
+                      ),
+                      child: Text(icon, style: const TextStyle(fontSize: 20)),
+                    ),
+                  ),
+                )
+                .toList(),
           ),
           const SizedBox(height: 16),
           const Text('색상', style: TextStyle(fontSize: 12, color: Colors.grey)),
@@ -258,7 +284,10 @@ class _AddTagDialogState extends State<_AddTagDialog> {
         ],
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('취소'),
+        ),
         FilledButton(
           onPressed: () {
             final label = _labelCtrl.text.trim();

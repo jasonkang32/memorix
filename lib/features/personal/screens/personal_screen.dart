@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,8 +7,9 @@ import '../providers/personal_provider.dart';
 import '../../../core/db/album_dao.dart';
 import '../../../core/db/media_dao.dart';
 import '../../../core/services/media_capture_service.dart';
+import '../../../core/services/original_media_cleanup_service.dart';
 import '../../../core/services/media_save_service.dart';
-import '../../../features/auth/providers/personal_lock_provider.dart';
+import '../../../features/auth/providers/secret_lock_provider.dart';
 import '../../../features/home/providers/home_provider.dart';
 import '../../../shared/models/album.dart';
 import '../../../shared/models/media_item.dart';
@@ -26,6 +28,7 @@ class PersonalScreen extends ConsumerStatefulWidget {
 
 class _PersonalScreenState extends ConsumerState<PersonalScreen> {
   bool _searching = false;
+  bool _isImporting = false;
   bool _albumGridMode = false;
   String _query = '';
   List<MediaItem>? _searchResults;
@@ -44,20 +47,17 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
       setState(() => _searchResults = null);
       return;
     }
-    final results = await _dao.quickSearch(q, 'personal');
+    final results = await _dao.quickSearch(q, 'secret');
     setState(() => _searchResults = results);
   }
 
   @override
   Widget build(BuildContext context) {
-    final lockState = ref.watch(personalLockProvider);
+    final lockState = ref.watch(secretLockProvider);
 
-    if (lockState == PersonalLockState.checking) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-    if (lockState == PersonalLockState.locked) {
-      return _PersonalLockGate(
-        onUnlock: () => ref.read(personalLockProvider.notifier).tryUnlock(),
+    if (lockState == SecretLockState.locked) {
+      return _SecretLockGate(
+        onUnlock: () => ref.read(secretLockProvider.notifier).tryUnlock(),
       );
     }
 
@@ -68,55 +68,64 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
       floatingActionButton: _searching
           ? null
           : FloatingActionButton(
-              onPressed: () => _onAddMedia(context, ref),
-              child: const Icon(Icons.add_a_photo_outlined),
+              onPressed: _isImporting ? null : () => _onAddMedia(context, ref),
+              child: _isImporting
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2.5,
+                      ),
+                    )
+                  : const Icon(Icons.add_a_photo_outlined),
             ),
       body: _searching
           ? _buildSearchBody()
           : _albumGridMode
-              ? albumAsync.when(
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (e, _) => Center(child: Text('오류: $e')),
-                  data: (albums) => _AlbumGridView(
-                    albums: albums,
-                    onAlbumUpdated: () => ref.invalidate(albumListProvider),
+          ? albumAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('오류: $e')),
+              data: (albums) => _AlbumGridView(
+                albums: albums,
+                onAlbumUpdated: () => ref.invalidate(albumListProvider),
+              ),
+            )
+          : Column(
+              children: [
+                albumAsync.when(
+                  loading: () => const SizedBox(
+                    height: 52,
+                    child: Center(child: CircularProgressIndicator()),
                   ),
-                )
-              : Column(
-                  children: [
-                    albumAsync.when(
-                      loading: () => const SizedBox(
-                          height: 52,
-                          child: Center(child: CircularProgressIndicator())),
-                      error: (e, _) => const SizedBox(),
-                      data: (albums) => _AlbumChipRow(albums: albums),
-                    ),
-                    Expanded(
-                      child: Consumer(
-                        builder: (context, ref, _) {
-                          final mediaAsync = ref.watch(personalMediaProvider);
-                          return mediaAsync.when(
-                            loading: () =>
-                                const Center(child: CircularProgressIndicator()),
-                            error: (e, _) => Center(child: Text('오류: $e')),
-                            data: (items) => items.isEmpty
-                                ? const _EmptyPersonalView()
-                                : MediaTimeline(
-                                    items: items,
-                                    onTap: (group, idx) =>
-                                        _openDetail(context, group, idx),
-                                    onLongPress: (item) =>
-                                        _openViewer(context, [item], 0),
-                                    onRefresh: () async =>
-                                        ref.invalidate(personalMediaProvider),
-                                  ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
+                  error: (e, _) => const SizedBox(),
+                  data: (albums) => _AlbumChipRow(albums: albums),
                 ),
+                Expanded(
+                  child: Consumer(
+                    builder: (context, ref, _) {
+                      final mediaAsync = ref.watch(secretMediaProvider);
+                      return mediaAsync.when(
+                        loading: () =>
+                            const Center(child: CircularProgressIndicator()),
+                        error: (e, _) => Center(child: Text('오류: $e')),
+                        data: (items) => items.isEmpty
+                            ? const _EmptySecretView()
+                            : MediaTimeline(
+                                items: items,
+                                onTap: (group, idx) =>
+                                    _openDetail(context, group, idx),
+                                onLongPress: (item) =>
+                                    _openViewer(context, [item], 0),
+                                onRefresh: () async =>
+                                    ref.invalidate(secretMediaProvider),
+                              ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
     );
   }
 
@@ -128,14 +137,25 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                  colors: [Color(0xFFFF6B9D), Color(0xFF7B61FF)]),
+                colors: [Color(0xFF7B61FF), Color(0xFF1A73E8)],
+              ),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Text('Personal',
-                style: TextStyle(
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.lock_rounded, color: Colors.white, size: 14),
+                SizedBox(width: 4),
+                Text(
+                  'Secret',
+                  style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w800,
-                    fontSize: 14)),
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -145,9 +165,11 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
           onPressed: () => setState(() => _searching = true),
         ),
         IconButton(
-          icon: Icon(_albumGridMode
-              ? Icons.view_stream_outlined
-              : Icons.grid_view_outlined),
+          icon: Icon(
+            _albumGridMode
+                ? Icons.view_stream_outlined
+                : Icons.grid_view_outlined,
+          ),
           tooltip: _albumGridMode ? '타임라인' : '앨범 목록',
           onPressed: () => setState(() => _albumGridMode = !_albumGridMode),
         ),
@@ -176,7 +198,7 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
         controller: _searchCtrl,
         autofocus: true,
         decoration: const InputDecoration(
-          hintText: 'Personal 검색...',
+          hintText: 'Secret 보관함 검색...',
           border: InputBorder.none,
           contentPadding: EdgeInsets.zero,
         ),
@@ -198,14 +220,20 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
   Widget _buildSearchBody() {
     if (_query.isEmpty) {
       return const Center(
-          child: Text('검색어를 입력하세요',
-              style: TextStyle(color: Colors.grey, fontSize: 14)));
+        child: Text(
+          '검색어를 입력하세요',
+          style: TextStyle(color: Colors.grey, fontSize: 14),
+        ),
+      );
     }
     final results = _searchResults ?? [];
     if (results.isEmpty) {
       return const Center(
-          child: Text('검색 결과가 없습니다',
-              style: TextStyle(color: Colors.grey, fontSize: 14)));
+        child: Text(
+          '검색 결과가 없습니다',
+          style: TextStyle(color: Colors.grey, fontSize: 14),
+        ),
+      );
     }
     return MediaTimeline(
       items: results,
@@ -217,93 +245,203 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
   void _showCreateAlbumDialog(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
-      builder: (_) =>
-          _CreateAlbumDialog(onCreated: () => ref.invalidate(albumListProvider)),
+      builder: (_) => _CreateAlbumDialog(
+        onCreated: () => ref.invalidate(albumListProvider),
+      ),
     );
   }
 
   Future<void> _onAddMedia(BuildContext context, WidgetRef ref) async {
-    List<CapturedMedia>? capturedList = await CaptureBottomSheet.show(context);
+    List<CapturedMedia>? capturedList = await CaptureBottomSheet.show(
+      context,
+      space: MediaSpace.secret,
+    );
 
-    if (capturedList == null || capturedList.isEmpty || !context.mounted) return;
+    if (capturedList == null || capturedList.isEmpty) {
+      if (mounted) setState(() => _isImporting = false);
+      return;
+    }
+    if (!context.mounted) {
+      if (mounted) setState(() => _isImporting = false);
+      return;
+    }
 
     final total = capturedList.length;
     final progressNotifier = ValueNotifier<int>(0);
+    BuildContext? progressDialogContext;
+    final dialogReady = Completer<void>();
+    void closeProgressDialog() {
+      final dialogContext = progressDialogContext;
+      progressDialogContext = null;
+      if (dialogContext != null && dialogContext.mounted) {
+        Navigator.of(dialogContext).pop();
+      }
+    }
+
+    if (mounted) setState(() => _isImporting = true);
 
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          content: ValueListenableBuilder<int>(
-            valueListenable: progressNotifier,
-            builder: (_, done, __) => Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const CircularProgressIndicator(),
-                const SizedBox(height: 16),
-                Text(total > 1 ? '$done / $total 저장 중...' : '저장 중...'),
-                if (total > 1) ...[
-                  const SizedBox(height: 8),
-                  LinearProgressIndicator(value: total > 0 ? done / total : 0),
+      builder: (dialogContext) {
+        progressDialogContext = dialogContext;
+        if (!dialogReady.isCompleted) {
+          dialogReady.complete();
+        }
+        return PopScope(
+          canPop: false,
+          child: AlertDialog(
+            content: ValueListenableBuilder<int>(
+              valueListenable: progressNotifier,
+              builder: (_, done, _) => Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  Text(total > 1 ? '$done / $total 저장 중...' : '저장 중...'),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'AI 분석은 백그라운드에서 진행됩니다',
+                    style: TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                  if (total > 1) ...[
+                    const SizedBox(height: 8),
+                    LinearProgressIndicator(
+                      value: total > 0 ? done / total : 0,
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
 
     try {
-      final results = await MediaSaveService.saveAll(
-        captured: capturedList,
-        space: MediaSpace.personal,
-        onProgress: (done, _) => progressNotifier.value = done,
+      // 다이얼로그 route가 실제로 mount되기 전에 빠르게 닫으면서
+      // 검은 화면 barrier만 남는 race를 방지한다.
+      await dialogReady.future.timeout(
+        const Duration(milliseconds: 300),
+        onTimeout: () {},
       );
 
-      if (context.mounted) Navigator.of(context).pop();
+      final results = await MediaSaveService.saveAll(
+        captured: capturedList,
+        space: MediaSpace.secret,
+        onProgress: (done, _) => progressNotifier.value = done,
+        onEnhancementComplete: () {
+          if (context.mounted) {
+            ref.invalidate(secretMediaProvider);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('AI 태그 분석 완료'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        },
+      );
 
-      ref.invalidate(personalMediaProvider);
-      ref.invalidate(homeSummaryProvider);
+      closeProgressDialog();
+
+      if (mounted) {
+        ref.invalidate(secretMediaProvider);
+        ref.invalidate(homeSummaryProvider);
+      }
 
       if (!context.mounted) return;
 
       if (results.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('저장된 항목이 없습니다.'),
-          backgroundColor: Colors.orange,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('저장된 항목이 없습니다.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
         return;
       }
 
       if (results.length > 1) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('${results.length}개 저장됨. 첫 번째 항목을 편집합니다.'),
-          duration: const Duration(seconds: 2),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${results.length}개 저장됨. 첫 번째 항목을 편집합니다.'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
       final savedItems = results.map((r) => r.item).toList();
-      await Navigator.push<dynamic>(
+      final detailChanged = await Navigator.push<dynamic>(
         context,
         MaterialPageRoute(
           builder: (_) => MediaDetailScreen(items: savedItems, initialIndex: 0),
         ),
       );
       if (context.mounted) {
-        ref.invalidate(personalMediaProvider);
+        ref.invalidate(secretMediaProvider);
         ref.invalidate(homeSummaryProvider);
       }
+      if (context.mounted && detailChanged != null) {
+        await _offerDeleteOriginals(context, capturedList);
+      }
     } catch (e) {
-      if (context.mounted) Navigator.of(context).pop();
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('미디어 저장 실패: $e'),
-        backgroundColor: Colors.red,
-      ));
+      closeProgressDialog();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('미디어 저장 실패: $e'), backgroundColor: Colors.red),
+        );
+      }
     } finally {
+      if (mounted) setState(() => _isImporting = false);
       progressNotifier.dispose();
     }
+  }
+
+  Future<void> _offerDeleteOriginals(
+    BuildContext context,
+    List<CapturedMedia> capturedList,
+  ) async {
+    if (capturedList.isEmpty) return;
+
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('원본 사진을 정리할까요?'),
+        content: const Text(
+          '선택한 파일은 메모릭스 보관함에 복사되었습니다. '
+          '갤러리에 원본을 그대로 두면 같은 사진이 두 곳에 남습니다.\n\n'
+          '메모릭스에만 보관하려면 원본 삭제를 권장합니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('그대로 두기'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('원본 삭제'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDelete != true || !context.mounted) return;
+
+    final result = await OriginalMediaCleanupService.deleteOriginals(
+      capturedList,
+    );
+    if (!context.mounted) return;
+
+    final message = result.failed == 0
+        ? '${result.deleted}개 원본을 삭제했습니다.'
+        : '${result.deleted}개 삭제, ${result.failed}개는 기기 권한 제한으로 삭제하지 못했습니다.';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: result.failed == 0 ? null : Colors.orange,
+      ),
+    );
   }
 
   void _openViewer(BuildContext context, List<MediaItem> items, int index) {
@@ -316,14 +454,17 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
   }
 
   Future<void> _openDetail(
-      BuildContext context, List<MediaItem> group, int index) async {
+    BuildContext context,
+    List<MediaItem> group,
+    int index,
+  ) async {
     final changed = await Navigator.push<dynamic>(
       context,
       MaterialPageRoute(
         builder: (_) => MediaDetailScreen(items: group, initialIndex: index),
       ),
     );
-    if (changed != null) ref.invalidate(personalMediaProvider);
+    if (changed != null) ref.invalidate(secretMediaProvider);
   }
 }
 
@@ -381,8 +522,7 @@ class _AlbumChipRowState extends ConsumerState<_AlbumChipRow> {
                 width: 24,
                 height: 24,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    const Icon(Icons.photo, size: 16),
+                errorBuilder: (_, _, _) => const Icon(Icons.photo, size: 16),
               ),
             );
           }
@@ -393,8 +533,7 @@ class _AlbumChipRowState extends ConsumerState<_AlbumChipRow> {
               label: Text(a.title),
               onPressed: () => Navigator.push(
                 context,
-                MaterialPageRoute(
-                    builder: (_) => AlbumDetailScreen(album: a)),
+                MaterialPageRoute(builder: (_) => AlbumDetailScreen(album: a)),
               ).then((_) => ref.invalidate(albumListProvider)),
             ),
           );
@@ -408,8 +547,7 @@ class _AlbumChipRowState extends ConsumerState<_AlbumChipRow> {
 class _AlbumGridView extends StatefulWidget {
   final List<Album> albums;
   final VoidCallback onAlbumUpdated;
-  const _AlbumGridView(
-      {required this.albums, required this.onAlbumUpdated});
+  const _AlbumGridView({required this.albums, required this.onAlbumUpdated});
 
   @override
   State<_AlbumGridView> createState() => _AlbumGridViewState();
@@ -473,8 +611,7 @@ class _AlbumGridViewState extends State<_AlbumGridView> {
           coverPath: coverPath,
           onTap: () => Navigator.push(
             context,
-            MaterialPageRoute(
-                builder: (_) => AlbumDetailScreen(album: album)),
+            MaterialPageRoute(builder: (_) => AlbumDetailScreen(album: album)),
           ).then((_) => widget.onAlbumUpdated()),
         );
       },
@@ -486,8 +623,11 @@ class _AlbumCard extends StatelessWidget {
   final Album album;
   final String? coverPath;
   final VoidCallback onTap;
-  const _AlbumCard(
-      {required this.album, required this.coverPath, required this.onTap});
+  const _AlbumCard({
+    required this.album,
+    required this.coverPath,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -504,8 +644,7 @@ class _AlbumCard extends StatelessWidget {
                   ? Image.file(
                       File(coverPath!),
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          _placeholder(context, emoji),
+                      errorBuilder: (_, _, _) => _placeholder(context, emoji),
                     )
                   : _placeholder(context, emoji),
             ),
@@ -517,7 +656,9 @@ class _AlbumCard extends StatelessWidget {
                   Text(
                     '$emoji ${album.title}',
                     style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 14),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -525,8 +666,7 @@ class _AlbumCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       _fmtDateRange(album.dateStart, album.dateEnd),
-                      style:
-                          TextStyle(fontSize: 11, color: Colors.grey[600]),
+                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                     ),
                   ],
                 ],
@@ -541,20 +681,18 @@ class _AlbumCard extends StatelessWidget {
   Widget _placeholder(BuildContext context, String emoji) {
     return Container(
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: Center(
-        child: Text(emoji, style: const TextStyle(fontSize: 40)),
-      ),
+      child: Center(child: Text(emoji, style: const TextStyle(fontSize: 40))),
     );
   }
 
   static String _eventEmoji(EventType type) => switch (type) {
-        EventType.travel => '✈️',
-        EventType.ceremony => '💍',
-        EventType.gathering => '🎉',
-        EventType.birthday => '🎂',
-        EventType.daily => '📅',
-        EventType.other => '📁',
-      };
+    EventType.travel => '✈️',
+    EventType.ceremony => '💍',
+    EventType.gathering => '🎉',
+    EventType.birthday => '🎂',
+    EventType.daily => '📅',
+    EventType.other => '📁',
+  };
 
   static String _fmtDateRange(int? start, int? end) {
     if (start == null) return '';
@@ -569,9 +707,9 @@ class _AlbumCard extends StatelessWidget {
   }
 }
 
-// ── Personal Space 잠금 게이트 ──
-class _EmptyPersonalView extends StatelessWidget {
-  const _EmptyPersonalView();
+// ── Secret 보관함 빈 상태 ──
+class _EmptySecretView extends StatelessWidget {
+  const _EmptySecretView();
 
   @override
   Widget build(BuildContext context) {
@@ -586,23 +724,26 @@ class _EmptyPersonalView extends StatelessWidget {
               height: 96,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFFFF6B9D), Color(0xFF7B61FF)],
+                  colors: [Color(0xFF7B61FF), Color(0xFF1A73E8)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(28),
               ),
-              child: const Icon(Icons.favorite_outline,
-                  size: 44, color: Colors.white),
+              child: const Icon(
+                Icons.lock_rounded,
+                size: 44,
+                color: Colors.white,
+              ),
             ),
             const SizedBox(height: 24),
             Text(
-              '개인 미디어가 없어요',
+              'Secret 보관함이 비어 있어요',
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 8),
             Text(
-              '메모릭스에만 보관\n외부에 노출되지 않아요',
+              '암호화되어 저장되며\n갤러리·파일 탐색기에 노출되지 않아요',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
@@ -612,7 +753,7 @@ class _EmptyPersonalView extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              '앨범을 만들고 사진을 추가하세요',
+              '우측 하단 + 버튼으로 사진을 추가하세요',
               style: TextStyle(fontSize: 12, color: Colors.grey[400]),
             ),
           ],
@@ -622,18 +763,32 @@ class _EmptyPersonalView extends StatelessWidget {
   }
 }
 
-class _PersonalLockGate extends StatefulWidget {
+class _SecretLockGate extends StatefulWidget {
   final Future<bool> Function() onUnlock;
-  const _PersonalLockGate({required this.onUnlock});
+  const _SecretLockGate({required this.onUnlock});
 
   @override
-  State<_PersonalLockGate> createState() => _PersonalLockGateState();
+  State<_SecretLockGate> createState() => _SecretLockGateState();
 }
 
-class _PersonalLockGateState extends State<_PersonalLockGate> {
+class _SecretLockGateState extends State<_SecretLockGate> {
   bool _unlocking = false;
+  bool _autoTried = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 진입 즉시 자동으로 1회 인증 시도 — 사용자가 버튼을 다시 누르지 않도록
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_autoTried && mounted) {
+        _autoTried = true;
+        _tryUnlock();
+      }
+    });
+  }
 
   Future<void> _tryUnlock() async {
+    if (_unlocking) return;
     setState(() => _unlocking = true);
     await widget.onUnlock();
     if (mounted) setState(() => _unlocking = false);
@@ -642,18 +797,22 @@ class _PersonalLockGateState extends State<_PersonalLockGate> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('🏠 Personal')),
+      appBar: AppBar(title: const Text('🔒 Secret 보관함')),
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.lock_outlined, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 20),
-            const Text('Personal Space가 잠겨 있습니다',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+            const Text(
+              'Secret 보관함이 잠겨 있어요',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            ),
             const SizedBox(height: 8),
-            Text('생체인증으로 잠금 해제',
-                style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+            Text(
+              '생체인증 또는 기기 비밀번호로 잠금 해제',
+              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+            ),
             const SizedBox(height: 32),
             _unlocking
                 ? const CircularProgressIndicator()
@@ -760,19 +919,23 @@ class _CreateAlbumDialogState extends State<_CreateAlbumDialog> {
       ),
       actions: [
         TextButton(
-            onPressed: () => Navigator.pop(context), child: const Text('취소')),
+          onPressed: () => Navigator.pop(context),
+          child: const Text('취소'),
+        ),
         FilledButton(
           onPressed: () async {
             if (_titleCtrl.text.trim().isEmpty) return;
             final nav = Navigator.of(context);
             final now = DateTime.now().millisecondsSinceEpoch;
-            await _albumDao.insert(Album(
-              eventType: _eventType,
-              title: _titleCtrl.text.trim(),
-              dateStart: _dateStart?.millisecondsSinceEpoch,
-              dateEnd: _dateEnd?.millisecondsSinceEpoch,
-              createdAt: now,
-            ));
+            await _albumDao.insert(
+              Album(
+                eventType: _eventType,
+                title: _titleCtrl.text.trim(),
+                dateStart: _dateStart?.millisecondsSinceEpoch,
+                dateEnd: _dateEnd?.millisecondsSinceEpoch,
+                createdAt: now,
+              ),
+            );
             widget.onCreated?.call();
             nav.pop();
           },

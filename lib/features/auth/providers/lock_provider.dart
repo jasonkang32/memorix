@@ -45,5 +45,6 @@ final lockProvider = StateNotifierProvider<LockNotifier, AppLockState>(
   (ref) => LockNotifier(),
 );
 
-// Personal Space 별도 잠금 여부 (하위 호환)
+// 하위 호환 — 더 이상 의미 없는 placeholder
+@Deprecated('Replaced by secretLockProvider')
 final personalLockedProvider = StateProvider<bool>((ref) => false);

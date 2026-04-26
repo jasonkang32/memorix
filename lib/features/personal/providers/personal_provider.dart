@@ -11,6 +11,11 @@ final albumListProvider = FutureProvider<List<Album>>((ref) async {
   return _albumDao.findAll();
 });
 
-final personalMediaProvider = FutureProvider<List<MediaItem>>((ref) async {
-  return _mediaDao.findPersonal();
+/// Secret 영역 미디어 (구 Personal). 마이그레이션 후에도 legacy row 함께 조회됨.
+final secretMediaProvider = FutureProvider<List<MediaItem>>((ref) async {
+  return _mediaDao.findSecret();
 });
+
+/// 호환용 별칭.
+@Deprecated('Use secretMediaProvider')
+final personalMediaProvider = secretMediaProvider;

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/media_item.dart';
+import 'encrypted_image.dart';
 
 class MediaThumbnailCard extends StatelessWidget {
   final MediaItem item;
@@ -27,8 +28,11 @@ class MediaThumbnailCard extends StatelessWidget {
             _buildThumbnail(),
             if (item.mediaType == MediaType.video)
               const Center(
-                child: Icon(Icons.play_circle_outline,
-                    color: Colors.white, size: 32),
+                child: Icon(
+                  Icons.play_circle_outline,
+                  color: Colors.white,
+                  size: 32,
+                ),
               ),
             if (item.mediaType == MediaType.document)
               Container(
@@ -62,6 +66,21 @@ class MediaThumbnailCard extends StatelessWidget {
 
   Widget _buildThumbnail() {
     final thumb = item.thumbPath;
+    if (item.isEncrypted) {
+      // Secret 보관함: thumbPath 우선, 없으면 원본
+      final encPath = (thumb != null && thumb.isNotEmpty)
+          ? thumb
+          : item.filePath;
+      if (item.mediaType == MediaType.document) {
+        return Container(
+          color: Colors.grey[200],
+          child: const Center(
+            child: Icon(Icons.description, color: Colors.grey, size: 32),
+          ),
+        );
+      }
+      return EncryptedImage(encryptedPath: encPath);
+    }
     if (thumb != null && File(thumb).existsSync()) {
       return Image.file(File(thumb), fit: BoxFit.cover);
     }

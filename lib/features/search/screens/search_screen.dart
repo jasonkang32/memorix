@@ -68,9 +68,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           ),
           // ── 태그 필터 ──
           _TagFilterBar(space: spaceFilter),
-          // ── Personal 전용 필터 (앨범 + 인물) ──
-          if (spaceFilter == MediaSpace.personal)
-            _PersonalFilterBar(),
+          // ── Secret 전용 필터 (앨범 + 인물) ──
+          if (spaceFilter == MediaSpace.secret) _PersonalFilterBar(),
           // ── 결과 ──
           Expanded(
             child: query.isEmpty
@@ -111,7 +110,7 @@ class _SpaceFilterBar extends StatelessWidget {
           const SizedBox(width: 8),
           _chip(context, MediaSpace.work, '💼 Work'),
           const SizedBox(width: 8),
-          _chip(context, MediaSpace.personal, '🏠 Personal'),
+          _chip(context, MediaSpace.secret, '🔒 Secret'),
         ],
       ),
     );
@@ -162,17 +161,19 @@ class _TagFilterBar extends ConsumerWidget {
                       ref.read(searchTagIdProvider.notifier).state = null,
                 ),
               ),
-              ...tags.map((t) => Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: ChoiceChip(
-                      avatar: Text(t.icon, style: const TextStyle(fontSize: 12)),
-                      label: Text(t.label, style: const TextStyle(fontSize: 11)),
-                      selected: selTag == t.id,
-                      visualDensity: VisualDensity.compact,
-                      onSelected: (_) =>
-                          ref.read(searchTagIdProvider.notifier).state = t.id,
-                    ),
-                  )),
+              ...tags.map(
+                (t) => Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ChoiceChip(
+                    avatar: Text(t.icon, style: const TextStyle(fontSize: 12)),
+                    label: Text(t.label, style: const TextStyle(fontSize: 11)),
+                    selected: selTag == t.id,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (_) =>
+                        ref.read(searchTagIdProvider.notifier).state = t.id,
+                  ),
+                ),
+              ),
             ],
           ),
         );
@@ -213,14 +214,18 @@ class _PersonalFilterBar extends ConsumerWidget {
                     context,
                     label: '전체',
                     selected: selAlbum == null,
-                    onTap: () => ref.read(searchAlbumIdProvider.notifier).state = null,
+                    onTap: () =>
+                        ref.read(searchAlbumIdProvider.notifier).state = null,
                   ),
-                  ...albums.map((a) => _smallChip(
-                        context,
-                        label: a.title,
-                        selected: selAlbum == a.id,
-                        onTap: () => ref.read(searchAlbumIdProvider.notifier).state = a.id,
-                      )),
+                  ...albums.map(
+                    (a) => _smallChip(
+                      context,
+                      label: a.title,
+                      selected: selAlbum == a.id,
+                      onTap: () =>
+                          ref.read(searchAlbumIdProvider.notifier).state = a.id,
+                    ),
+                  ),
                 ],
               );
             },
@@ -239,14 +244,19 @@ class _PersonalFilterBar extends ConsumerWidget {
                     context,
                     label: '전체',
                     selected: selPerson == null,
-                    onTap: () => ref.read(searchPersonIdProvider.notifier).state = null,
+                    onTap: () =>
+                        ref.read(searchPersonIdProvider.notifier).state = null,
                   ),
-                  ...people.map((p) => _smallChip(
-                        context,
-                        label: p.name,
-                        selected: selPerson == p.id,
-                        onTap: () => ref.read(searchPersonIdProvider.notifier).state = p.id,
-                      )),
+                  ...people.map(
+                    (p) => _smallChip(
+                      context,
+                      label: p.name,
+                      selected: selPerson == p.id,
+                      onTap: () =>
+                          ref.read(searchPersonIdProvider.notifier).state =
+                              p.id,
+                    ),
+                  ),
                 ],
               );
             },
@@ -284,11 +294,14 @@ class _FilterRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(label,
-            style: TextStyle(
-                fontSize: 11,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500)),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey[600],
+            fontWeight: FontWeight.w500,
+          ),
+        ),
         const SizedBox(width: 8),
         Expanded(
           child: SingleChildScrollView(
@@ -313,11 +326,15 @@ class _SearchHint extends StatelessWidget {
         children: [
           Icon(Icons.search, size: 56, color: Colors.grey[300]),
           const SizedBox(height: 12),
-          Text('제목, 메모를 입력하세요',
-              style: TextStyle(color: Colors.grey[500], fontSize: 15)),
+          Text(
+            '제목, 메모를 입력하세요',
+            style: TextStyle(color: Colors.grey[500], fontSize: 15),
+          ),
           const SizedBox(height: 8),
-          Text('Work + Personal 동시 검색',
-              style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+          Text(
+            'Work + Personal 동시 검색',
+            style: TextStyle(color: Colors.grey[400], fontSize: 12),
+          ),
         ],
       ),
     );
@@ -337,8 +354,10 @@ class _EmptyResult extends StatelessWidget {
         children: [
           Icon(Icons.search_off, size: 56, color: Colors.grey[300]),
           const SizedBox(height: 12),
-          Text('"$query" 결과 없음',
-              style: TextStyle(color: Colors.grey[500], fontSize: 15)),
+          Text(
+            '"$query" 결과 없음',
+            style: TextStyle(color: Colors.grey[500], fontSize: 15),
+          ),
         ],
       ),
     );
@@ -360,50 +379,50 @@ class _ResultGrid extends ConsumerWidget {
             child: Text(
               '결과 ${items.length}개',
               style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w500),
+                fontSize: 12,
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ),
         SliverPadding(
           padding: const EdgeInsets.all(8),
           sliver: SliverGrid(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final item = items[index];
-                return Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    MediaThumbnailCard(
-                      item: item,
-                      onTap: () => _openViewer(context, items, index),
-                      onLongPress: () => _openDetail(context, ref, item),
-                    ),
-                    // Space 뱃지
-                    Positioned(
-                      top: 4,
-                      left: 4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 5, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: item.space == MediaSpace.work
-                              ? Colors.indigo.withValues(alpha: 0.85)
-                              : Colors.teal.withValues(alpha: 0.85),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          item.space == MediaSpace.work ? '💼' : '🏠',
-                          style: const TextStyle(fontSize: 10),
-                        ),
+            delegate: SliverChildBuilderDelegate((context, index) {
+              final item = items[index];
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  MediaThumbnailCard(
+                    item: item,
+                    onTap: () => _openViewer(context, items, index),
+                    onLongPress: () => _openDetail(context, ref, item),
+                  ),
+                  // Space 뱃지
+                  Positioned(
+                    top: 4,
+                    left: 4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: item.space == MediaSpace.work
+                            ? Colors.indigo.withValues(alpha: 0.85)
+                            : Colors.teal.withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        item.space == MediaSpace.work ? '💼' : '🏠',
+                        style: const TextStyle(fontSize: 10),
                       ),
                     ),
-                  ],
-                );
-              },
-              childCount: items.length,
-            ),
+                  ),
+                ],
+              );
+            }, childCount: items.length),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 3,
               crossAxisSpacing: 4,
@@ -425,10 +444,15 @@ class _ResultGrid extends ConsumerWidget {
   }
 
   Future<void> _openDetail(
-      BuildContext context, WidgetRef ref, MediaItem item) async {
+    BuildContext context,
+    WidgetRef ref,
+    MediaItem item,
+  ) async {
     final changed = await Navigator.push<dynamic>(
       context,
-      MaterialPageRoute(builder: (_) => MediaDetailScreen(items: [item], initialIndex: 0)),
+      MaterialPageRoute(
+        builder: (_) => MediaDetailScreen(items: [item], initialIndex: 0),
+      ),
     );
     if (changed != null) ref.invalidate(searchResultProvider);
   }

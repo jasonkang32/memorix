@@ -12,7 +12,12 @@ class MediaDao {
 
   Future<int> update(MediaItem item) async {
     final db = await _db;
-    return db.update('media', item.toMap(), where: 'id = ?', whereArgs: [item.id]);
+    return db.update(
+      'media',
+      item.toMap(),
+      where: 'id = ?',
+      whereArgs: [item.id],
+    );
   }
 
   Future<int> delete(int id) async {
@@ -38,42 +43,71 @@ class MediaDao {
     final db = await _db;
     final where = <String>["space = 'work'"];
     final args = <dynamic>[];
-    if (countryCode != null) { where.add('country_code = ?'); args.add(countryCode); }
-    if (region != null) { where.add('region = ?'); args.add(region); }
-    if (mediaType != null) { where.add('media_type = ?'); args.add(mediaType); }
+    if (countryCode != null) {
+      where.add('country_code = ?');
+      args.add(countryCode);
+    }
+    if (region != null) {
+      where.add('region = ?');
+      args.add(region);
+    }
+    if (mediaType != null) {
+      where.add('media_type = ?');
+      args.add(mediaType);
+    }
     final rows = await db.query(
       'media',
       where: where.join(' AND '),
       whereArgs: args.isEmpty ? null : args,
-      orderBy: 'taken_at DESC',
+      orderBy: 'created_at DESC',
       limit: limit,
       offset: offset,
     );
     return rows.map(MediaItem.fromMap).toList();
   }
 
-  /// Personal Space 목록 (앨범 필터)
-  Future<List<MediaItem>> findPersonal({
+  /// Secret Space 목록 (앨범 필터). 구버전 호환을 위해 'personal'도 포함.
+  Future<List<MediaItem>> findSecret({
     int? albumId,
     String? mediaType,
     int limit = 50,
     int offset = 0,
   }) async {
     final db = await _db;
-    final where = <String>["space = 'personal'"];
+    final where = <String>["space IN ('secret','personal')"];
     final args = <dynamic>[];
-    if (albumId != null) { where.add('album_id = ?'); args.add(albumId); }
-    if (mediaType != null) { where.add('media_type = ?'); args.add(mediaType); }
+    if (albumId != null) {
+      where.add('album_id = ?');
+      args.add(albumId);
+    }
+    if (mediaType != null) {
+      where.add('media_type = ?');
+      args.add(mediaType);
+    }
     final rows = await db.query(
       'media',
       where: where.join(' AND '),
       whereArgs: args.isEmpty ? null : args,
-      orderBy: 'taken_at DESC',
+      orderBy: 'created_at DESC',
       limit: limit,
       offset: offset,
     );
     return rows.map(MediaItem.fromMap).toList();
   }
+
+  /// 호환용 별칭 — 신규 코드는 [findSecret]을 사용.
+  @Deprecated('Use findSecret')
+  Future<List<MediaItem>> findPersonal({
+    int? albumId,
+    String? mediaType,
+    int limit = 50,
+    int offset = 0,
+  }) => findSecret(
+    albumId: albumId,
+    mediaType: mediaType,
+    limit: limit,
+    offset: offset,
+  );
 
   /// FTS5 전문 검색 (Work + Personal 통합)
   Future<List<MediaItem>> search({
@@ -90,10 +124,26 @@ class MediaDao {
     final conditions = <String>['media_fts MATCH ?'];
     final args = <dynamic>[query];
 
-    if (space != null) { conditions.add("m.space = '${space.name}'"); }
-    if (countryCode != null) { conditions.add("m.country_code = ?"); args.add(countryCode); }
-    if (region != null) { conditions.add("m.region = ?"); args.add(region); }
-    if (albumId != null) { conditions.add("m.album_id = ?"); args.add(albumId); }
+    if (space != null) {
+      // secret 검색 시에는 legacy 'personal' row도 포함
+      if (space == MediaSpace.secret) {
+        conditions.add("m.space IN ('secret','personal')");
+      } else {
+        conditions.add("m.space = '${space.dbValue}'");
+      }
+    }
+    if (countryCode != null) {
+      conditions.add("m.country_code = ?");
+      args.add(countryCode);
+    }
+    if (region != null) {
+      conditions.add("m.region = ?");
+      args.add(region);
+    }
+    if (albumId != null) {
+      conditions.add("m.album_id = ?");
+      args.add(albumId);
+    }
 
     String sql = '''
       SELECT m.* FROM media m
@@ -155,42 +205,59 @@ class MediaDao {
 
   // ── 통계 쿼리 ──────────────────────────────────────────────
 
+  /// space가 'secret'/'work' 같은 단일 값일 수도 있고, secret 영역 통합을 위해
+  /// legacy 'personal'까지 함께 묶어야 할 수도 있다. 이 헬퍼가 SQL 단편을 만든다.
+  static (String, List<dynamic>) _spaceClause(String space) {
+    if (space == 'secret') {
+      return ("space IN ('secret','personal')", const []);
+    }
+    return ('space = ?', [space]);
+  }
+
   Future<int> countBySpace(String space) async {
     final db = await _db;
+    final (where, args) = _spaceClause(space);
     final r = await db.rawQuery(
-      "SELECT COUNT(*) as c FROM media WHERE space = ?", [space]);
+      'SELECT COUNT(*) as c FROM media WHERE $where',
+      args,
+    );
     return (r.first['c'] as int?) ?? 0;
   }
 
   /// 배치 그룹 기준 등록 수 (타임라인 카드 수와 동일)
   Future<int> countGroupsBySpace(String space) async {
     final db = await _db;
-    final r = await db.rawQuery("""
+    final (where, args) = _spaceClause(space);
+    final r = await db.rawQuery('''
       SELECT COUNT(*) as c FROM (
         SELECT CASE
           WHEN batch_id IS NOT NULL AND batch_id != '' THEN batch_id
           ELSE CAST(id AS TEXT)
         END as grp
-        FROM media WHERE space = ?
+        FROM media WHERE $where
         GROUP BY grp
       )
-    """, [space]);
+    ''', args);
     return (r.first['c'] as int?) ?? 0;
   }
 
   Future<Map<String, int>> countByTypeForSpace(String space) async {
     final db = await _db;
+    final (where, args) = _spaceClause(space);
     final rows = await db.rawQuery(
-      "SELECT media_type, COUNT(*) as c FROM media WHERE space = ? GROUP BY media_type",
-      [space],
+      'SELECT media_type, COUNT(*) as c FROM media WHERE $where GROUP BY media_type',
+      args,
     );
-    return {for (final r in rows) r['media_type'] as String: (r['c'] as int?) ?? 0};
+    return {
+      for (final r in rows) r['media_type'] as String: (r['c'] as int?) ?? 0,
+    };
   }
 
   Future<int> countDistinctCountries() async {
     final db = await _db;
     final r = await db.rawQuery(
-      "SELECT COUNT(DISTINCT country_code) as c FROM media WHERE space='work' AND country_code != ''");
+      "SELECT COUNT(DISTINCT country_code) as c FROM media WHERE space='work' AND country_code != ''",
+    );
     return (r.first['c'] as int?) ?? 0;
   }
 
@@ -202,7 +269,11 @@ class MediaDao {
 
   Future<List<MediaItem>> findRecent({int limit = 10}) async {
     final db = await _db;
-    final rows = await db.query('media', orderBy: 'created_at DESC', limit: limit);
+    final rows = await db.query(
+      'media',
+      orderBy: 'created_at DESC',
+      limit: limit,
+    );
     return rows.map(MediaItem.fromMap).toList();
   }
 
@@ -212,45 +283,55 @@ class MediaDao {
     final since = DateTime.now()
         .subtract(Duration(days: days))
         .millisecondsSinceEpoch;
-    final rows = await db.rawQuery('''
+    final rows = await db.rawQuery(
+      '''
       SELECT strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', 'localtime') as day,
              COUNT(*) as c
       FROM media
       WHERE created_at >= ?
       GROUP BY day
       ORDER BY day
-    ''', [since]);
+    ''',
+      [since],
+    );
     return {for (final r in rows) r['day'] as String: (r['c'] as int?) ?? 0};
   }
 
   /// 태그별 사용 횟수 TOP N
   Future<List<Map<String, dynamic>>> topTags({int limit = 5}) async {
     final db = await _db;
-    final rows = await db.rawQuery('''
+    final rows = await db.rawQuery(
+      '''
       SELECT t.label, t.color, COUNT(mt.media_id) as cnt
       FROM tags t
       JOIN media_tags mt ON t.id = mt.tag_id
       GROUP BY t.id
       ORDER BY cnt DESC
       LIMIT ?
-    ''', [limit]);
+    ''',
+      [limit],
+    );
     return rows.toList();
   }
 
-  /// 키워드로 Work/Personal 내 빠른 검색 — note·태그·지역·국가 포함
+  /// 키워드로 Work/Secret 내 빠른 검색 — note·태그·지역·국가 포함
   Future<List<MediaItem>> quickSearch(String query, String space) async {
     final db = await _db;
     if (query.trim().isEmpty) {
-      return space == 'work'
-          ? findWork(limit: 200)
-          : findPersonal(limit: 200);
+      return space == 'work' ? findWork(limit: 200) : findSecret(limit: 200);
     }
     final q = '%$query%';
-    final rows = await db.rawQuery('''
+    // legacy 'personal' row도 secret 검색에 포함
+    final spaceClause = space == 'work'
+        ? 'm.space = ?'
+        : "m.space IN ('secret','personal') AND ? = ?";
+    final spaceArgs = space == 'work' ? [space] : [space, space];
+    final rows = await db.rawQuery(
+      '''
       SELECT DISTINCT m.* FROM media m
       LEFT JOIN media_tags mt ON m.id = mt.media_id
       LEFT JOIN tags t ON mt.tag_id = t.id
-      WHERE m.space = ?
+      WHERE $spaceClause
         AND (
           m.title LIKE ? OR
           m.note LIKE ? OR
@@ -261,7 +342,9 @@ class MediaDao {
         )
       ORDER BY m.taken_at DESC
       LIMIT 100
-    ''', [space, q, q, q, q, q, q]);
+    ''',
+      [...spaceArgs, q, q, q, q, q, q],
+    );
     return rows.map(MediaItem.fromMap).toList();
   }
 }

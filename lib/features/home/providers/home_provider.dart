@@ -9,9 +9,9 @@ import '../../../shared/models/media_item.dart';
 
 class HomeSummary {
   final int workCount;
-  final int personalCount;
-  final Map<String, int> workByType;   // photo/video/document
-  final Map<String, int> personalByType;
+  final int secretCount;
+  final Map<String, int> workByType; // photo/video/document
+  final Map<String, int> secretByType;
   final int albumCount;
   final int peopleCount;
   final int countryCount;
@@ -24,9 +24,9 @@ class HomeSummary {
 
   const HomeSummary({
     required this.workCount,
-    required this.personalCount,
+    required this.secretCount,
     required this.workByType,
-    required this.personalByType,
+    required this.secretByType,
     required this.albumCount,
     required this.peopleCount,
     required this.countryCount,
@@ -38,7 +38,7 @@ class HomeSummary {
     required this.storageBreakdown,
   });
 
-  int get totalCount => workCount + personalCount;
+  int get totalCount => workCount + secretCount;
 
   String get totalSizeLabel {
     if (totalSizeKb >= 1024 * 1024) {
@@ -60,9 +60,9 @@ final homeSummaryProvider = FutureProvider<HomeSummary>((ref) async {
 
   final results = await Future.wait([
     dao.countGroupsBySpace('work'),
-    dao.countGroupsBySpace('personal'),
+    dao.countGroupsBySpace('secret'),
     dao.countByTypeForSpace('work'),
-    dao.countByTypeForSpace('personal'),
+    dao.countByTypeForSpace('secret'),
     albumDao.findAll(),
     peopleDao.findAll(),
     dao.countDistinctCountries(),
@@ -76,9 +76,9 @@ final homeSummaryProvider = FutureProvider<HomeSummary>((ref) async {
 
   return HomeSummary(
     workCount: results[0] as int,
-    personalCount: results[1] as int,
+    secretCount: results[1] as int,
     workByType: results[2] as Map<String, int>,
-    personalByType: results[3] as Map<String, int>,
+    secretByType: results[3] as Map<String, int>,
     albumCount: (results[4] as List).length,
     peopleCount: (results[5] as List).length,
     countryCount: results[6] as int,

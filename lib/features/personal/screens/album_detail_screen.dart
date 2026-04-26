@@ -32,7 +32,7 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
   }
 
   Future<void> _loadItems() async {
-    final items = await _mediaDao.findPersonal(albumId: widget.album.id);
+    final items = await _mediaDao.findSecret(albumId: widget.album.id);
     setState(() {
       _items = items;
       _loading = false;
@@ -40,15 +40,18 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
   }
 
   Future<void> _onAddMedia() async {
-    final capturedList = await CaptureBottomSheet.show(context);
+    final capturedList = await CaptureBottomSheet.show(
+      context,
+      space: MediaSpace.secret,
+    );
     if (capturedList == null || capturedList.isEmpty || !mounted) return;
     await MediaSaveService.saveAll(
       captured: capturedList,
-      space: MediaSpace.personal,
+      space: MediaSpace.secret,
       albumId: widget.album.id,
     );
     _loadItems();
-    ref.invalidate(personalMediaProvider);
+    ref.invalidate(secretMediaProvider);
   }
 
   Future<void> _setCover(MediaItem item) async {
@@ -66,8 +69,9 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
     );
     ref.invalidate(albumListProvider);
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('커버 사진이 변경되었습니다')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('커버 사진이 변경되었습니다')));
     }
   }
 
@@ -95,8 +99,9 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('취소')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -108,14 +113,13 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
     if (ok != true) return;
     await _albumDao.delete(widget.album.id!);
     ref.invalidate(albumListProvider);
-    ref.invalidate(personalMediaProvider);
+    ref.invalidate(secretMediaProvider);
     if (mounted) Navigator.pop(context);
   }
 
   Future<void> _moveToAlbum(MediaItem item) async {
     final albums = await _albumDao.findAll();
-    final otherAlbums =
-        albums.where((a) => a.id != widget.album.id).toList();
+    final otherAlbums = albums.where((a) => a.id != widget.album.id).toList();
     if (!mounted) return;
 
     // -1 = 미분류(앨범 없음), null = 취소
@@ -126,26 +130,32 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
         children: [
           SimpleDialogOption(
             onPressed: () => Navigator.pop(ctx, -1),
-            child: Row(children: [
-              const Icon(Icons.inbox_outlined, size: 20),
-              const SizedBox(width: 8),
-              Text('미분류 (앨범 없음)',
-                  style: TextStyle(color: Colors.grey[700])),
-            ]),
+            child: Row(
+              children: [
+                const Icon(Icons.inbox_outlined, size: 20),
+                const SizedBox(width: 8),
+                Text('미분류 (앨범 없음)', style: TextStyle(color: Colors.grey[700])),
+              ],
+            ),
           ),
           const Divider(height: 1),
-          ...otherAlbums.map((a) => SimpleDialogOption(
-                onPressed: () => Navigator.pop(ctx, a.id),
-                child: Row(children: [
-                  Text(_eventEmoji(a.eventType),
-                      style: const TextStyle(fontSize: 18)),
+          ...otherAlbums.map(
+            (a) => SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, a.id),
+              child: Row(
+                children: [
+                  Text(
+                    _eventEmoji(a.eventType),
+                    style: const TextStyle(fontSize: 18),
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(a.title,
-                        overflow: TextOverflow.ellipsis),
+                    child: Text(a.title, overflow: TextOverflow.ellipsis),
                   ),
-                ]),
-              )),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -153,13 +163,14 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
     final targetAlbumId = selectedId == -1 ? null : selectedId;
     await _mediaDao.moveToAlbum(item.id!, targetAlbumId);
     _loadItems();
-    ref.invalidate(personalMediaProvider);
+    ref.invalidate(secretMediaProvider);
     if (mounted) {
       final dest = selectedId == -1
           ? '미분류'
           : otherAlbums.firstWhere((a) => a.id == selectedId).title;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('"$dest"(으)로 이동했습니다')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('"$dest"(으)로 이동했습니다')));
     }
   }
 
@@ -179,19 +190,23 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
             itemBuilder: (_) => [
               const PopupMenuItem(
                 value: 'edit',
-                child: Row(children: [
-                  Icon(Icons.edit_outlined),
-                  SizedBox(width: 8),
-                  Text('앨범 편집'),
-                ]),
+                child: Row(
+                  children: [
+                    Icon(Icons.edit_outlined),
+                    SizedBox(width: 8),
+                    Text('앨범 편집'),
+                  ],
+                ),
               ),
               const PopupMenuItem(
                 value: 'delete',
-                child: Row(children: [
-                  Icon(Icons.delete_outline, color: Colors.red),
-                  SizedBox(width: 8),
-                  Text('앨범 삭제', style: TextStyle(color: Colors.red)),
-                ]),
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('앨범 삭제', style: TextStyle(color: Colors.red)),
+                  ],
+                ),
               ),
             ],
           ),
@@ -204,42 +219,46 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _items.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.photo_album_outlined,
-                          size: 64, color: Colors.grey[300]),
-                      const SizedBox(height: 12),
-                      Text('아직 사진이 없습니다',
-                          style: TextStyle(color: Colors.grey[500])),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.photo_album_outlined,
+                    size: 64,
+                    color: Colors.grey[300],
                   ),
-                )
-              : GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    crossAxisSpacing: 4,
-                    mainAxisSpacing: 4,
+                  const SizedBox(height: 12),
+                  Text(
+                    '아직 사진이 없습니다',
+                    style: TextStyle(color: Colors.grey[500]),
                   ),
-                  itemCount: _items.length,
-                  itemBuilder: (ctx, index) {
-                    final item = _items[index];
-                    return MediaThumbnailCard(
-                      item: item,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => MediaViewerScreen(
-                              items: _items, initialIndex: index),
-                        ),
-                      ),
-                      onLongPress: () => _showItemMenu(item),
-                    );
-                  },
-                ),
+                ],
+              ),
+            )
+          : GridView.builder(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 4,
+                mainAxisSpacing: 4,
+              ),
+              itemCount: _items.length,
+              itemBuilder: (ctx, index) {
+                final item = _items[index];
+                return MediaThumbnailCard(
+                  item: item,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          MediaViewerScreen(items: _items, initialIndex: index),
+                    ),
+                  ),
+                  onLongPress: () => _showItemMenu(item),
+                );
+              },
+            ),
     );
   }
 
@@ -274,8 +293,9 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
                 await Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) =>
-                          MediaDetailScreen(items: [item], initialIndex: 0)),
+                    builder: (_) =>
+                        MediaDetailScreen(items: [item], initialIndex: 0),
+                  ),
                 );
                 _loadItems();
               },
@@ -287,13 +307,13 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
   }
 
   static String _eventEmoji(EventType type) => switch (type) {
-        EventType.travel => '✈️',
-        EventType.ceremony => '💍',
-        EventType.gathering => '🎉',
-        EventType.birthday => '🎂',
-        EventType.daily => '📅',
-        EventType.other => '📁',
-      };
+    EventType.travel => '✈️',
+    EventType.ceremony => '💍',
+    EventType.gathering => '🎉',
+    EventType.birthday => '🎂',
+    EventType.daily => '📅',
+    EventType.other => '📁',
+  };
 }
 
 // ── 앨범 편집 다이얼로그 ──
@@ -393,8 +413,7 @@ class _AlbumEditDialogState extends State<_AlbumEditDialog> {
                 border: OutlineInputBorder(),
               ),
               items: EventType.values
-                  .map((e) =>
-                      DropdownMenuItem(value: e, child: Text(e.name)))
+                  .map((e) => DropdownMenuItem(value: e, child: Text(e.name)))
                   .toList(),
               onChanged: (v) => setState(() => _eventType = v!),
             ),
@@ -433,15 +452,17 @@ class _AlbumEditDialogState extends State<_AlbumEditDialog> {
       ),
       actions: [
         TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('취소')),
+          onPressed: () => Navigator.pop(context),
+          child: const Text('취소'),
+        ),
         FilledButton(
           onPressed: _saving ? null : _save,
           child: _saving
               ? const SizedBox(
                   width: 16,
                   height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2))
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
               : const Text('저장'),
         ),
       ],

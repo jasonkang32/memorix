@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 import 'package:video_player/video_player.dart';
@@ -8,6 +9,7 @@ import 'package:chewie/chewie.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/media_item.dart';
 import '../../core/db/media_dao.dart';
+import '../../core/services/secret_vault_service.dart';
 import '../../core/services/storage_service.dart';
 
 class MediaViewerScreen extends StatefulWidget {
@@ -60,7 +62,10 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
         title: const Text('삭제'),
         content: const Text('이 미디어를 삭제할까요?\n파일도 함께 삭제됩니다.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -72,8 +77,14 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
     if (ok != true || !mounted) return;
 
     setState(() => _deleting = true);
-    await StorageService.deleteFile(item.filePath);
-    if (item.thumbPath != null) await StorageService.deleteFile(item.thumbPath!);
+    if (item.isEncrypted) {
+      await SecretVaultService.deleteVaultFile(item.filePath);
+      await SecretVaultService.deleteVaultFile(item.thumbPath);
+    } else {
+      await StorageService.deleteFile(item.filePath);
+      if (item.thumbPath != null)
+        await StorageService.deleteFile(item.thumbPath!);
+    }
     if (item.id != null) await _mediaDao.delete(item.id!);
 
     if (!mounted) return;
@@ -108,16 +119,23 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                     onPageChanged: (i) => setState(() => _current = i),
                     builder: (ctx, index) {
                       final it = _items[index];
-                      return PhotoViewGalleryPageOptions(
-                        imageProvider: FileImage(File(it.filePath)),
+                      return PhotoViewGalleryPageOptions.customChild(
+                        child: it.isEncrypted
+                            ? _EncryptedPhotoView(path: it.filePath)
+                            : Image.file(
+                                File(it.filePath),
+                                fit: BoxFit.contain,
+                              ),
                         minScale: PhotoViewComputedScale.contained,
                         maxScale: PhotoViewComputedScale.covered * 3,
-                        heroAttributes:
-                            PhotoViewHeroAttributes(tag: 'media_${it.id}'),
+                        heroAttributes: PhotoViewHeroAttributes(
+                          tag: 'media_${it.id}',
+                        ),
                       );
                     },
-                    backgroundDecoration:
-                        const BoxDecoration(color: Colors.black),
+                    backgroundDecoration: const BoxDecoration(
+                      color: Colors.black,
+                    ),
                     loadingBuilder: (ctx, event) => const Center(
                       child: CircularProgressIndicator(color: Colors.white54),
                     ),
@@ -144,8 +162,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                   child: Row(
                     children: [
                       IconButton(
-                        icon:
-                            const Icon(Icons.arrow_back, color: Colors.white),
+                        icon: const Icon(Icons.arrow_back, color: Colors.white),
                         onPressed: () => Navigator.pop(context),
                       ),
                       const Spacer(),
@@ -154,7 +171,9 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                           child: Text(
                             item.title,
                             style: const TextStyle(
-                                color: Colors.white, fontSize: 14),
+                              color: Colors.white,
+                              fontSize: 14,
+                            ),
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.center,
                           ),
@@ -167,10 +186,17 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                       IconButton(
                         icon: _deleting
                             ? const SizedBox(
-                                width: 18, height: 18,
+                                width: 18,
+                                height: 18,
                                 child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.delete_outline,
+                                color: Colors.redAccent,
+                              ),
                         onPressed: _deleting ? null : _deleteCurrentItem,
                       ),
                     ],
@@ -191,15 +217,15 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                 alignment: Alignment.bottomCenter,
                 child: SafeArea(
                   child: Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: [Colors.black54, Colors.transparent],
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [Colors.black54, Colors.transparent],
+                      ),
                     ),
-                  ),
-                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
-                  child: Column(
+                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+                    child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -209,27 +235,38 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                             child: Text(
                               '${_current + 1} / ${_items.length}',
                               style: const TextStyle(
-                                  color: Colors.white70, fontSize: 12),
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
                             ),
                           ),
                         if (item.note.isNotEmpty) ...[
                           const SizedBox(height: 8),
-                          Text(item.note,
-                              style: const TextStyle(
-                                  color: Colors.white, fontSize: 13)),
+                          Text(
+                            item.note,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                            ),
+                          ),
                         ],
                         if (item.countryCode.isNotEmpty ||
                             item.region.isNotEmpty) ...[
                           const SizedBox(height: 4),
                           Row(
                             children: [
-                              const Icon(Icons.location_on,
-                                  size: 12, color: Colors.white70),
+                              const Icon(
+                                Icons.location_on,
+                                size: 12,
+                                color: Colors.white70,
+                              ),
                               const SizedBox(width: 4),
                               Text(
                                 '${item.countryCode} ${item.region}'.trim(),
                                 style: const TextStyle(
-                                    color: Colors.white70, fontSize: 12),
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
                               ),
                             ],
                           ),
@@ -238,7 +275,9 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                         Text(
                           _formatDate(item.takenAt),
                           style: const TextStyle(
-                              color: Colors.white54, fontSize: 11),
+                            color: Colors.white54,
+                            fontSize: 11,
+                          ),
                         ),
                       ],
                     ),
@@ -253,14 +292,73 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
   }
 
   Future<void> _shareItem(MediaItem item) async {
-    await Share.shareXFiles([XFile(item.filePath)],
-        text: item.title.isNotEmpty ? item.title : null);
+    if (item.isEncrypted) {
+      // Secret 보관함 항목은 외부 공유를 막아 평문 누출을 방지한다.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Secret 보관함 항목은 외부로 공유할 수 없습니다.')),
+      );
+      return;
+    }
+    await Share.shareXFiles([
+      XFile(item.filePath),
+    ], text: item.title.isNotEmpty ? item.title : null);
   }
 
   static String _formatDate(int ms) {
     final dt = DateTime.fromMillisecondsSinceEpoch(ms);
     return '${dt.year}.${dt.month.toString().padLeft(2, '0')}.${dt.day.toString().padLeft(2, '0')} '
         '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+// ── 암호화 사진 뷰어 ──
+class _EncryptedPhotoView extends StatefulWidget {
+  final String path;
+  const _EncryptedPhotoView({required this.path});
+
+  @override
+  State<_EncryptedPhotoView> createState() => _EncryptedPhotoViewState();
+}
+
+class _EncryptedPhotoViewState extends State<_EncryptedPhotoView> {
+  Uint8List? _bytes;
+  Object? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final bytes = await SecretVaultService.decryptToBytes(widget.path);
+      if (!mounted) return;
+      setState(() => _bytes = bytes);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_bytes != null) {
+      return PhotoView(
+        imageProvider: MemoryImage(_bytes!),
+        backgroundDecoration: const BoxDecoration(color: Colors.black),
+        minScale: PhotoViewComputedScale.contained,
+        maxScale: PhotoViewComputedScale.covered * 3,
+      );
+    }
+    if (_error != null) {
+      return const Center(
+        child: Icon(Icons.lock_outline, color: Colors.white54, size: 48),
+      );
+    }
+    return const Center(
+      child: CircularProgressIndicator(color: Colors.white54),
+    );
   }
 }
 
@@ -276,7 +374,9 @@ class _VideoView extends StatefulWidget {
 class _VideoViewState extends State<_VideoView> {
   VideoPlayerController? _videoCtrl;
   ChewieController? _chewieCtrl;
+  File? _decryptedTmp;
   bool _initialized = false;
+  Object? _error;
 
   @override
   void initState() {
@@ -285,39 +385,69 @@ class _VideoViewState extends State<_VideoView> {
   }
 
   Future<void> _initPlayer() async {
-    final ctrl = VideoPlayerController.file(File(widget.item.filePath));
-    await ctrl.initialize();
-    final chewie = ChewieController(
-      videoPlayerController: ctrl,
-      autoPlay: true,
-      looping: false,
-      aspectRatio: ctrl.value.aspectRatio,
-      materialProgressColors: ChewieProgressColors(
-        playedColor: Colors.white,
-        bufferedColor: Colors.white38,
-        backgroundColor: Colors.white12,
-        handleColor: Colors.white,
-      ),
-    );
-    setState(() {
-      _videoCtrl = ctrl;
-      _chewieCtrl = chewie;
-      _initialized = true;
-    });
+    try {
+      late File source;
+      if (widget.item.isEncrypted) {
+        final ext = p.extension(widget.item.filePath.replaceAll('.enc', ''));
+        _decryptedTmp = await SecretVaultService.decryptToTempFile(
+          widget.item.filePath,
+          tmpExtension: ext.isEmpty ? '.mp4' : ext,
+        );
+        source = _decryptedTmp!;
+      } else {
+        source = File(widget.item.filePath);
+      }
+      final ctrl = VideoPlayerController.file(source);
+      await ctrl.initialize();
+      if (!mounted) {
+        await ctrl.dispose();
+        return;
+      }
+      final chewie = ChewieController(
+        videoPlayerController: ctrl,
+        autoPlay: true,
+        looping: false,
+        aspectRatio: ctrl.value.aspectRatio,
+        materialProgressColors: ChewieProgressColors(
+          playedColor: Colors.white,
+          bufferedColor: Colors.white38,
+          backgroundColor: Colors.white12,
+          handleColor: Colors.white,
+        ),
+      );
+      setState(() {
+        _videoCtrl = ctrl;
+        _chewieCtrl = chewie;
+        _initialized = true;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _error = e);
+    }
   }
 
   @override
   void dispose() {
     _chewieCtrl?.dispose();
     _videoCtrl?.dispose();
+    // 평문 임시 파일 즉시 삭제
+    final tmp = _decryptedTmp;
+    if (tmp != null) {
+      tmp.delete().catchError((_) => tmp);
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_error != null) {
+      return const Center(
+        child: Icon(Icons.lock_outline, color: Colors.white54, size: 48),
+      );
+    }
     if (!_initialized) {
       return const Center(
-          child: CircularProgressIndicator(color: Colors.white54));
+        child: CircularProgressIndicator(color: Colors.white54),
+      );
     }
     return Center(child: Chewie(controller: _chewieCtrl!));
   }

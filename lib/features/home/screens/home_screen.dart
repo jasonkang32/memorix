@@ -8,6 +8,7 @@ import '../providers/home_provider.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../shared/models/media_item.dart';
 import '../../../shared/screens/media_viewer_screen.dart';
+import '../../../shared/widgets/encrypted_image.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -17,83 +18,94 @@ class HomeScreen extends ConsumerWidget {
     final summaryAsync = ref.watch(homeSummaryProvider);
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          _buildAppBar(context),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-            sliver: summaryAsync.when(
-              loading: () => const SliverFillRemaining(
-                child: Center(child: CircularProgressIndicator()),
-              ),
-              error: (e, _) => SliverFillRemaining(
-                child: Center(child: Text('오류: $e')),
-              ),
-              data: (s) => SliverList(
-                delegate: SliverChildListDelegate([
-                  const SizedBox(height: 16),
-                  GestureDetector(
-                    onTap: () => context.go('/work'),
-                    child: _TotalSummaryCard(summary: s),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(child: _SpaceCard(
-                        label: 'Work',
-                        count: s.workCount,
-                        byType: s.workByType,
-                        sub: '${s.countryCount}개국',
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF1A73E8), Color(0xFF00C896)],
+      body: RefreshIndicator(
+        onRefresh: () async => ref.invalidate(homeSummaryProvider),
+        color: const Color(0xFF00C896),
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            _buildAppBar(context),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+              sliver: summaryAsync.when(
+                loading: () => const SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (e, _) =>
+                    SliverFillRemaining(child: Center(child: Text('오류: $e'))),
+                data: (s) => SliverList(
+                  delegate: SliverChildListDelegate([
+                    const SizedBox(height: 16),
+                    GestureDetector(
+                      onTap: () => context.go('/work'),
+                      child: _TotalSummaryCard(summary: s),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _SpaceCard(
+                            label: 'Work',
+                            count: s.workCount,
+                            byType: s.workByType,
+                            sub: '${s.countryCount}개국',
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF1A73E8), Color(0xFF00C896)],
+                            ),
+                            icon: Icons.work_rounded,
+                            onTap: () => context.go('/work'),
+                          ),
                         ),
-                        icon: Icons.work_rounded,
-                        onTap: () => context.go('/work'),
-                      )),
-                      const SizedBox(width: 12),
-                      Expanded(child: _SpaceCard(
-                        label: 'Personal',
-                        count: s.personalCount,
-                        byType: s.personalByType,
-                        sub: '앨범 ${s.albumCount}개 · 인물 ${s.peopleCount}명',
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFFF6B9D), Color(0xFF7B61FF)],
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _SpaceCard(
+                            label: 'Secret',
+                            count: s.secretCount,
+                            byType: s.secretByType,
+                            sub: '앨범 ${s.albumCount}개 · 인물 ${s.peopleCount}명',
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF7B61FF), Color(0xFF1A73E8)],
+                            ),
+                            icon: Icons.lock_rounded,
+                            onTap: () => context.go('/secret'),
+                          ),
                         ),
-                        icon: Icons.favorite_rounded,
-                        onTap: () => context.go('/personal'),
-                      )),
+                      ],
+                    ),
+                    if (s.pendingSync > 0) ...[
+                      const SizedBox(height: 12),
+                      _SyncBanner(count: s.pendingSync),
                     ],
-                  ),
-                  if (s.pendingSync > 0) ...[
-                    const SizedBox(height: 12),
-                    _SyncBanner(count: s.pendingSync),
-                  ],
-                  const SizedBox(height: 20),
-                  _SectionTitle('최근 등록'),
-                  const SizedBox(height: 10),
-                  _RecentRow(items: s.recentItems),
-                  const SizedBox(height: 20),
-                  _SectionTitle('최근 30일 활동'),
-                  const SizedBox(height: 10),
-                  _ActivityChart(activityByDay: s.activityByDay),
-                  if (s.topTags.isNotEmpty) ...[
                     const SizedBox(height: 20),
-                    _SectionTitle('태그 TOP ${s.topTags.length}'),
+                    _SectionTitle('최근 등록'),
                     const SizedBox(height: 10),
-                    _TagRanking(tags: s.topTags),
-                  ],
-                  const SizedBox(height: 20),
-                  _SectionTitle('저장 공간'),
-                  const SizedBox(height: 10),
-                  _StorageUsageCard(breakdown: s.storageBreakdown),
-                  const SizedBox(height: 20),
-                  _TypeBreakdown(workByType: s.workByType, personalByType: s.personalByType),
-                ]),
+                    _RecentRow(items: s.recentItems),
+                    const SizedBox(height: 20),
+                    _SectionTitle('최근 30일 활동'),
+                    const SizedBox(height: 10),
+                    _ActivityChart(activityByDay: s.activityByDay),
+                    if (s.topTags.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      _SectionTitle('태그 TOP ${s.topTags.length}'),
+                      const SizedBox(height: 10),
+                      _TagRanking(tags: s.topTags),
+                    ],
+                    const SizedBox(height: 20),
+                    _SectionTitle('저장 공간'),
+                    const SizedBox(height: 10),
+                    _StorageUsageCard(breakdown: s.storageBreakdown),
+                    const SizedBox(height: 20),
+                    _TypeBreakdown(
+                      workByType: s.workByType,
+                      secretByType: s.secretByType,
+                    ),
+                  ]),
+                ),
               ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
+      ), // RefreshIndicator
     );
   }
 
@@ -146,8 +158,11 @@ class HomeScreen extends ConsumerWidget {
                       ),
                       const Spacer(),
                       IconButton(
-                        icon: const Icon(Icons.search_rounded,
-                            color: Colors.white, size: 24),
+                        icon: const Icon(
+                          Icons.search_rounded,
+                          color: Colors.white,
+                          size: 24,
+                        ),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
                         tooltip: '검색',
@@ -191,12 +206,15 @@ class _TotalSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final totalPhotos = (summary.workByType['photo'] ?? 0) +
-        (summary.personalByType['photo'] ?? 0);
-    final totalVideos = (summary.workByType['video'] ?? 0) +
-        (summary.personalByType['video'] ?? 0);
-    final totalDocs = (summary.workByType['document'] ?? 0) +
-        (summary.personalByType['document'] ?? 0);
+    final totalPhotos =
+        (summary.workByType['photo'] ?? 0) +
+        (summary.secretByType['photo'] ?? 0);
+    final totalVideos =
+        (summary.workByType['video'] ?? 0) +
+        (summary.secretByType['video'] ?? 0);
+    final totalDocs =
+        (summary.workByType['document'] ?? 0) +
+        (summary.secretByType['document'] ?? 0);
     final divColor = isDark ? const Color(0xFF2D3340) : const Color(0xFFECEFF3);
 
     return Container(
@@ -205,13 +223,15 @@ class _TotalSummaryCard extends StatelessWidget {
         color: isDark ? const Color(0xFF161B22) : Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: divColor),
-        boxShadow: isDark ? null : [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
       ),
       child: Row(
         children: [
@@ -219,18 +239,25 @@ class _TotalSummaryCard extends StatelessWidget {
           Expanded(
             child: Column(
               children: [
-                const Icon(Icons.perm_media_outlined,
-                    color: Color(0xFF00C896), size: 22),
+                const Icon(
+                  Icons.perm_media_outlined,
+                  color: Color(0xFF00C896),
+                  size: 22,
+                ),
                 const SizedBox(height: 6),
-                Text('${summary.totalCount}개',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF00C896),
-                    )),
+                Text(
+                  '${summary.totalCount}개',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF00C896),
+                  ),
+                ),
                 const SizedBox(height: 3),
-                const Text('등록 수',
-                    style: TextStyle(fontSize: 11, color: Colors.grey)),
+                const Text(
+                  '등록 수',
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                ),
                 const SizedBox(height: 5),
                 Wrap(
                   alignment: WrapAlignment.center,
@@ -283,11 +310,20 @@ class _MiniTypeLabel extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(width: 6, height: 6,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
         const SizedBox(width: 3),
-        Text('$label $count',
-            style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600)),
+        Text(
+          '$label $count',
+          style: TextStyle(
+            fontSize: 10,
+            color: color,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ],
     );
   }
@@ -311,15 +347,16 @@ class _StatItem extends StatelessWidget {
       children: [
         Icon(icon, color: color, size: 22),
         const SizedBox(height: 6),
-        Text(value,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: color,
-            )),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: color,
+          ),
+        ),
         const SizedBox(height: 2),
-        Text(label,
-            style: const TextStyle(fontSize: 11, color: Colors.grey)),
+        Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
       ],
     );
   }
@@ -355,52 +392,58 @@ class _SpaceCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: gradient,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: Colors.white, size: 18),
-              const SizedBox(width: 6),
-              Text(label,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: gradient,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: Colors.white, size: 18),
+                const SizedBox(width: 6),
+                Text(
+                  label,
                   style: const TextStyle(
                     color: Colors.white70,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                  )),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text('$count개',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '$count개',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 26,
                 fontWeight: FontWeight.w800,
                 letterSpacing: -0.5,
-              )),
-          const SizedBox(height: 4),
-          Text(sub,
-              style: const TextStyle(color: Colors.white70, fontSize: 11)),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _TypePill('📷', '$photos'),
-              const SizedBox(width: 6),
-              _TypePill('🎬', '$videos'),
-              if (docs > 0) ...[
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              sub,
+              style: const TextStyle(color: Colors.white70, fontSize: 11),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _TypePill('📷', '$photos'),
                 const SizedBox(width: 6),
-                _TypePill('📄', '$docs'),
+                _TypePill('🎬', '$videos'),
+                if (docs > 0) ...[
+                  const SizedBox(width: 6),
+                  _TypePill('📄', '$docs'),
+                ],
               ],
-            ],
-          ),
-        ],
-      ),
-    ), // Container
+            ),
+          ],
+        ),
+      ), // Container
     ); // GestureDetector
   }
 }
@@ -418,8 +461,10 @@ class _TypePill extends StatelessWidget {
         color: Colors.white.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Text('$emoji $count',
-          style: const TextStyle(color: Colors.white, fontSize: 11)),
+      child: Text(
+        '$emoji $count',
+        style: const TextStyle(color: Colors.white, fontSize: 11),
+      ),
     );
   }
 }
@@ -437,12 +482,17 @@ class _SyncBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFFF6B35).withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFFF6B35).withValues(alpha: 0.3)),
+        border: Border.all(
+          color: const Color(0xFFFF6B35).withValues(alpha: 0.3),
+        ),
       ),
       child: Row(
         children: [
-          const Icon(Icons.cloud_upload_outlined,
-              color: Color(0xFFFF6B35), size: 18),
+          const Icon(
+            Icons.cloud_upload_outlined,
+            color: Color(0xFFFF6B35),
+            size: 18,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -472,8 +522,10 @@ class _RecentRow extends StatelessWidget {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
-          child: Text('등록된 미디어가 없습니다',
-              style: TextStyle(color: Colors.grey, fontSize: 13)),
+          child: Text(
+            '등록된 미디어가 없습니다',
+            style: TextStyle(color: Colors.grey, fontSize: 13),
+          ),
         ),
       );
     }
@@ -519,6 +571,27 @@ class _RecentThumb extends StatelessWidget {
       );
     }
     final path = item.thumbPath ?? item.filePath;
+    if (item.isEncrypted) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          EncryptedImage(encryptedPath: path),
+          if (item.mediaType == MediaType.video)
+            const Center(
+              child: Icon(
+                Icons.play_circle_outline,
+                color: Colors.white,
+                size: 28,
+              ),
+            ),
+          const Positioned(
+            top: 4,
+            left: 4,
+            child: Icon(Icons.lock, color: Colors.white70, size: 14),
+          ),
+        ],
+      );
+    }
     if (File(path).existsSync()) {
       return Stack(
         fit: StackFit.expand,
@@ -526,8 +599,11 @@ class _RecentThumb extends StatelessWidget {
           Image.file(File(path), fit: BoxFit.cover),
           if (item.mediaType == MediaType.video)
             const Center(
-              child: Icon(Icons.play_circle_outline,
-                  color: Colors.white, size: 28),
+              child: Icon(
+                Icons.play_circle_outline,
+                color: Colors.white,
+                size: 28,
+              ),
             ),
         ],
       );
@@ -553,11 +629,14 @@ class _ActivityChart extends StatelessWidget {
           color: isDark ? const Color(0xFF161B22) : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-              color: isDark ? const Color(0xFF262D37) : const Color(0xFFECEFF3)),
+            color: isDark ? const Color(0xFF262D37) : const Color(0xFFECEFF3),
+          ),
         ),
         child: const Center(
-          child: Text('이번 달 활동이 없습니다',
-              style: TextStyle(color: Colors.grey, fontSize: 13)),
+          child: Text(
+            '이번 달 활동이 없습니다',
+            style: TextStyle(color: Colors.grey, fontSize: 13),
+          ),
         ),
       );
     }
@@ -578,7 +657,8 @@ class _ActivityChart extends StatelessWidget {
         color: isDark ? const Color(0xFF161B22) : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: isDark ? const Color(0xFF262D37) : const Color(0xFFECEFF3)),
+          color: isDark ? const Color(0xFF262D37) : const Color(0xFFECEFF3),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -603,8 +683,8 @@ class _ActivityChart extends StatelessWidget {
                             color: count > 0
                                 ? const Color(0xFF00C896)
                                 : (isDark
-                                    ? const Color(0xFF262D37)
-                                    : const Color(0xFFECEFF3)),
+                                      ? const Color(0xFF262D37)
+                                      : const Color(0xFFECEFF3)),
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -620,8 +700,9 @@ class _ActivityChart extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                DateFormat('M/d').format(
-                    DateTime.now().subtract(const Duration(days: 29))),
+                DateFormat(
+                  'M/d',
+                ).format(DateTime.now().subtract(const Duration(days: 29))),
                 style: const TextStyle(fontSize: 10, color: Colors.grey),
               ),
               Text(
@@ -653,9 +734,7 @@ class _TagRanking extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final maxCount = tags.isEmpty
-        ? 1
-        : (tags.first['cnt'] as int? ?? 1);
+    final maxCount = tags.isEmpty ? 1 : (tags.first['cnt'] as int? ?? 1);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -663,7 +742,8 @@ class _TagRanking extends StatelessWidget {
         color: isDark ? const Color(0xFF161B22) : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: isDark ? const Color(0xFF262D37) : const Color(0xFFECEFF3)),
+          color: isDark ? const Color(0xFF262D37) : const Color(0xFFECEFF3),
+        ),
       ),
       child: Column(
         children: tags.asMap().entries.map((entry) {
@@ -694,7 +774,9 @@ class _TagRanking extends StatelessWidget {
                   width: 8,
                   height: 8,
                   decoration: BoxDecoration(
-                      color: color, shape: BoxShape.circle),
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -704,12 +786,20 @@ class _TagRanking extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(label,
-                              style: const TextStyle(
-                                  fontSize: 13, fontWeight: FontWeight.w600)),
-                          Text('$cnt회',
-                              style: const TextStyle(
-                                  fontSize: 11, color: Colors.grey)),
+                          Text(
+                            label,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            '$cnt회',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -738,22 +828,31 @@ class _TagRanking extends StatelessWidget {
 
 class _TypeBreakdown extends StatelessWidget {
   final Map<String, int> workByType;
-  final Map<String, int> personalByType;
-  const _TypeBreakdown({
-    required this.workByType,
-    required this.personalByType,
-  });
+  final Map<String, int> secretByType;
+  const _TypeBreakdown({required this.workByType, required this.secretByType});
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final items = [
-      _BreakdownItem('사진', Icons.photo_outlined, const Color(0xFF1A73E8),
-          (workByType['photo'] ?? 0) + (personalByType['photo'] ?? 0)),
-      _BreakdownItem('영상', Icons.videocam_outlined, const Color(0xFFFF6B9D),
-          (workByType['video'] ?? 0) + (personalByType['video'] ?? 0)),
-      _BreakdownItem('문서', Icons.description_outlined, const Color(0xFFFFB800),
-          (workByType['document'] ?? 0) + (personalByType['document'] ?? 0)),
+      _BreakdownItem(
+        '사진',
+        Icons.photo_outlined,
+        const Color(0xFF1A73E8),
+        (workByType['photo'] ?? 0) + (secretByType['photo'] ?? 0),
+      ),
+      _BreakdownItem(
+        '영상',
+        Icons.videocam_outlined,
+        const Color(0xFFFF6B9D),
+        (workByType['video'] ?? 0) + (secretByType['video'] ?? 0),
+      ),
+      _BreakdownItem(
+        '문서',
+        Icons.description_outlined,
+        const Color(0xFFFFB800),
+        (workByType['document'] ?? 0) + (secretByType['document'] ?? 0),
+      ),
     ];
     final total = items.fold<int>(0, (s, e) => s + e.count);
 
@@ -763,13 +862,16 @@ class _TypeBreakdown extends StatelessWidget {
         color: isDark ? const Color(0xFF161B22) : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: isDark ? const Color(0xFF262D37) : const Color(0xFFECEFF3)),
+          color: isDark ? const Color(0xFF262D37) : const Color(0xFFECEFF3),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('미디어 타입',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+          const Text(
+            '미디어 타입',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+          ),
           const SizedBox(height: 14),
           Row(
             children: items.map((item) {
@@ -787,13 +889,26 @@ class _TypeBreakdown extends StatelessWidget {
                       child: Icon(item.icon, color: item.color, size: 22),
                     ),
                     const SizedBox(height: 6),
-                    Text(item.label,
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    Text(
+                      item.label,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     const SizedBox(height: 2),
-                    Text('${(ratio * 100).toStringAsFixed(0)}%',
-                        style: TextStyle(fontSize: 12, color: item.color, fontWeight: FontWeight.w700)),
-                    Text('${item.count}개',
-                        style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                    Text(
+                      '${(ratio * 100).toStringAsFixed(0)}%',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: item.color,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      '${item.count}개',
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
                   ],
                 ),
               );
@@ -820,11 +935,11 @@ class _StorageUsageCard extends StatelessWidget {
   const _StorageUsageCard({required this.breakdown});
 
   static const _segments = [
-    ('사진', const Color(0xFF1A73E8)),
-    ('영상', const Color(0xFFFF6B9D)),
-    ('문서', const Color(0xFFFFB800)),
-    ('보고서', const Color(0xFF7B61FF)),
-    ('DB', const Color(0xFF9E9E9E)),
+    ('사진', Color(0xFF1A73E8)),
+    ('영상', Color(0xFFFF6B9D)),
+    ('문서', Color(0xFFFFB800)),
+    ('보고서', Color(0xFF7B61FF)),
+    ('DB', Color(0xFF9E9E9E)),
   ];
 
   @override
@@ -852,8 +967,8 @@ class _StorageUsageCard extends StatelessWidget {
         color: isDark ? const Color(0xFF161B22) : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color:
-                isDark ? const Color(0xFF262D37) : const Color(0xFFECEFF3)),
+          color: isDark ? const Color(0xFF262D37) : const Color(0xFFECEFF3),
+        ),
         boxShadow: isDark
             ? null
             : [
@@ -873,12 +988,13 @@ class _StorageUsageCard extends StatelessWidget {
               Text(
                 '총 ${breakdown.totalLabel}',
                 style: const TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w800),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               Text(
                 total == 0 ? '비어 있음' : '메모릭스 내부 저장',
-                style:
-                    const TextStyle(fontSize: 11, color: Colors.grey),
+                style: const TextStyle(fontSize: 11, color: Colors.grey),
               ),
             ],
           ),
@@ -890,8 +1006,9 @@ class _StorageUsageCard extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: 0,
                 minHeight: 12,
-                backgroundColor:
-                    isDark ? const Color(0xFF262D37) : const Color(0xFFECEFF3),
+                backgroundColor: isDark
+                    ? const Color(0xFF262D37)
+                    : const Color(0xFFECEFF3),
               ),
             )
           else
@@ -924,13 +1041,14 @@ class _StorageUsageCard extends StatelessWidget {
                     width: 8,
                     height: 8,
                     decoration: BoxDecoration(
-                        color: _segments[i].$2, shape: BoxShape.circle),
+                      color: _segments[i].$2,
+                      shape: BoxShape.circle,
+                    ),
                   ),
                   const SizedBox(width: 4),
                   Text(
                     '${_segments[i].$1}  ${labels[i]}',
-                    style: const TextStyle(
-                        fontSize: 11, color: Colors.grey),
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
                   ),
                 ],
               );
@@ -952,10 +1070,9 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: Theme.of(context)
-          .textTheme
-          .titleMedium
-          ?.copyWith(fontWeight: FontWeight.w700),
+      style: Theme.of(
+        context,
+      ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
     );
   }
 }

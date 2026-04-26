@@ -20,22 +20,22 @@ class Tag {
   });
 
   factory Tag.fromMap(Map<String, dynamic> map) => Tag(
-        id: map['id'] as int?,
-        space: map['space'] == 'personal' ? MediaSpace.personal : MediaSpace.work,
-        key: map['key'] as String,
-        label: map['label'] as String,
-        color: map['color'] as String,
-        icon: map['icon'] as String,
-        isCustom: (map['is_custom'] as int? ?? 0) == 1,
-      );
+    id: map['id'] as int?,
+    space: MediaSpaceX.parse(map['space'] as String?),
+    key: map['key'] as String,
+    label: map['label'] as String,
+    color: map['color'] as String,
+    icon: map['icon'] as String,
+    isCustom: (map['is_custom'] as int? ?? 0) == 1,
+  );
 
   Map<String, dynamic> toMap() => {
-        if (id != null) 'id': id,
-        'space': space.name,
-        'key': key,
-        'label': label,
-        'color': color,
-        'icon': icon,
-        'is_custom': isCustom ? 1 : 0,
-      };
+    if (id != null) 'id': id,
+    'space': space.dbValue,
+    'key': key,
+    'label': label,
+    'color': color,
+    'icon': icon,
+    'is_custom': isCustom ? 1 : 0,
+  };
 }
