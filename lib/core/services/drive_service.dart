@@ -103,10 +103,16 @@ class DriveService {
   // ── 폴더 생성 또는 조회 ──
   static Future<String?> _ensureFolder(String name, {String? parentId}) async {
     final api = _api!;
-    final q = StringBuffer("mimeType='application/vnd.google-apps.folder' and name='$name' and trashed=false");
+    final q = StringBuffer(
+      "mimeType='application/vnd.google-apps.folder' and name='$name' and trashed=false",
+    );
     if (parentId != null) q.write(" and '$parentId' in parents");
 
-    final list = await api.files.list(q: q.toString(), spaces: 'drive', $fields: 'files(id,name)');
+    final list = await api.files.list(
+      q: q.toString(),
+      spaces: 'drive',
+      $fields: 'files(id,name)',
+    );
     if (list.files != null && list.files!.isNotEmpty) {
       return list.files!.first.id;
     }
@@ -137,10 +143,15 @@ class DriveService {
       if (workId == null) return null;
       String locationParentId;
       if (item.countryCode.isNotEmpty) {
-        final countryId = await _ensureFolder(item.countryCode, parentId: workId);
+        final countryId = await _ensureFolder(
+          item.countryCode,
+          parentId: workId,
+        );
         if (countryId == null) return null;
         if (item.region.isNotEmpty) {
-          locationParentId = (await _ensureFolder(item.region, parentId: countryId)) ?? countryId;
+          locationParentId =
+              (await _ensureFolder(item.region, parentId: countryId)) ??
+              countryId;
         } else {
           locationParentId = countryId;
         }
@@ -149,7 +160,9 @@ class DriveService {
       }
       // 문서는 docs/ 서브폴더로 분리
       if (item.mediaType == MediaType.document) {
-        parentId = (await _ensureFolder('docs', parentId: locationParentId)) ?? locationParentId;
+        parentId =
+            (await _ensureFolder('docs', parentId: locationParentId)) ??
+            locationParentId;
       } else {
         parentId = locationParentId;
       }
@@ -158,7 +171,8 @@ class DriveService {
       if (personalId == null) return null;
       // 문서는 docs/ 서브폴더로 분리
       if (item.mediaType == MediaType.document) {
-        parentId = (await _ensureFolder('docs', parentId: personalId)) ?? personalId;
+        parentId =
+            (await _ensureFolder('docs', parentId: personalId)) ?? personalId;
       } else {
         parentId = personalId;
       }
@@ -169,8 +183,16 @@ class DriveService {
       ..name = file.path.split('/').last
       ..parents = [parentId];
 
-    final media = drive.Media(file.openRead(), file.lengthSync(), contentType: mime);
-    final result = await api.files.create(driveFile, uploadMedia: media, $fields: 'id');
+    final media = drive.Media(
+      file.openRead(),
+      file.lengthSync(),
+      contentType: mime,
+    );
+    final result = await api.files.create(
+      driveFile,
+      uploadMedia: media,
+      $fields: 'id',
+    );
     return result.id;
   }
 
@@ -210,9 +232,11 @@ class DriveService {
       'mov' => 'video/quicktime',
       'pdf' => 'application/pdf',
       'doc' => 'application/msword',
-      'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'docx' =>
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'xls' => 'application/vnd.ms-excel',
-      'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'xlsx' =>
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       _ => 'application/octet-stream',
     };
   }
@@ -246,6 +270,10 @@ class DriveAccountInfo {
 }
 
 // ── Riverpod Provider ──
-final driveSignedInProvider = FutureProvider<bool>((ref) => DriveService.isSignedIn);
-final driveAccountInfoProvider = FutureProvider<DriveAccountInfo?>((ref) => DriveService.accountInfo);
+final driveSignedInProvider = FutureProvider<bool>(
+  (ref) => DriveService.isSignedIn,
+);
+final driveAccountInfoProvider = FutureProvider<DriveAccountInfo?>(
+  (ref) => DriveService.accountInfo,
+);
 final driveSyncProvider = StateProvider<SyncResult?>((_) => null);

@@ -23,6 +23,7 @@
         tools:ignore="ScopedStorage" />
 
     <application
+        android:hasFragileUserData="true"
         android:usesCleartextTraffic="false"
         android:label="Memorix"
         android:name="${applicationName}"

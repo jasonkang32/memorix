@@ -4,7 +4,7 @@ import '../models/media_item.dart';
 /// 미디어 목록을 월 단위로 그룹핑한 결과
 /// [entries] = (label, items) 쌍의 순서 보장 리스트
 class DateGroup {
-  final String label;   // "2025년 3월"
+  final String label; // "2025년 3월"
   final List<MediaItem> items;
   const DateGroup({required this.label, required this.items});
 }

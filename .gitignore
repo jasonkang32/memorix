@@ -32,6 +32,10 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+.codex_build/
+.flutter
+.flutter_tool_state
+android/build/
 
 # Symbolication related
 app.*.symbols

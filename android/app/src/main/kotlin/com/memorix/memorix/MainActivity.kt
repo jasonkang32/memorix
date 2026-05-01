@@ -1,33 +1,43 @@
 package com.memorix.memorix
 
-import android.app.Activity
-import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.provider.MediaStore
 import android.util.Log
 import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.Result
 import java.io.File
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 class MainActivity : FlutterFragmentActivity() {
     private val channelName = "memorix/picker"
     private val tag = "MemorixPicker"
-    private var pendingResult: Result? = null
-    private lateinit var pickLauncher: ActivityResultLauncher<Intent>
+    private lateinit var visualPickerLauncher: ActivityResultLauncher<PickVisualMediaRequest>
+    private lateinit var openDocumentLauncher: ActivityResultLauncher<Array<String>>
+
+    companion object {
+        // companion object에 저장해 액티비티 재생성 시에도 유지
+        private var pendingResult: Result? = null
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 현대적 ActivityResultLauncher — 매 호출마다 정상 콜백 보장
-        pickLauncher = registerForActivityResult(
-            ActivityResultContracts.StartActivityForResult()
-        ) { result ->
-            handlePickResult(result.resultCode, result.data)
+        visualPickerLauncher = registerForActivityResult(
+            ActivityResultContracts.PickMultipleVisualMedia(50)
+        ) { uris ->
+            handlePickResult(uris)
+        }
+
+        openDocumentLauncher = registerForActivityResult(
+            ActivityResultContracts.OpenMultipleDocuments()
+        ) { uris ->
+            handlePickResult(uris)
         }
     }
 
@@ -37,48 +47,40 @@ class MainActivity : FlutterFragmentActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "pickMedia" -> {
-                        val maxItems = (call.argument<Int>("maxItems") ?: 50).coerceAtLeast(2)
-                        pickMedia(maxItems, result)
+                        pickMedia(result)
                     }
                     else -> result.notImplemented()
                 }
             }
     }
 
-    private fun pickMedia(maxItems: Int, result: Result) {
-        Log.d(tag, "pickMedia called maxItems=$maxItems pendingWas=${pendingResult != null}")
-        // 이전 호출의 잔여 state 가 있더라도 강제로 덮어씀 (사용자가 이미 이전 픽을 끝냈을 경우)
+    private fun pickMedia(result: Result) {
+        Log.d(tag, "pickMedia called pendingWas=${pendingResult != null}")
         pendingResult?.let {
             Log.w(tag, "overwriting stale pendingResult")
             try { it.success(emptyList<String>()) } catch (_: Exception) {}
         }
         pendingResult = result
 
-        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            Intent(MediaStore.ACTION_PICK_IMAGES).apply {
-                type = "*/*"
-                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/*", "video/*"))
-                putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, maxItems)
-            }
-        } else {
-            Intent(Intent.ACTION_GET_CONTENT).apply {
-                type = "*/*"
-                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/*", "video/*"))
-                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                addCategory(Intent.CATEGORY_OPENABLE)
-            }
-        }
         try {
-            pickLauncher.launch(intent)
+            val request = PickVisualMediaRequest(
+                ActivityResultContracts.PickVisualMedia.ImageAndVideo
+            )
+            visualPickerLauncher.launch(request)
         } catch (e: Exception) {
-            Log.e(tag, "launch failed: ${e.message}")
-            pendingResult = null
-            result.error("LAUNCH_FAILED", e.message, null)
+            Log.w(tag, "visual picker launch failed, fallback to open document: ${e.message}")
+            try {
+                openDocumentLauncher.launch(arrayOf("image/*", "video/*"))
+            } catch (fallbackError: Exception) {
+                Log.e(tag, "fallback launch failed: ${fallbackError.message}")
+                pendingResult = null
+                result.error("LAUNCH_FAILED", fallbackError.message, null)
+            }
         }
     }
 
-    private fun handlePickResult(resultCode: Int, data: Intent?) {
-        Log.d(tag, "handlePickResult code=$resultCode hasData=${data != null}")
+    private fun handlePickResult(uris: List<Uri>) {
+        Log.d(tag, "handlePickResult picked=${uris.size}")
         val r = pendingResult
         if (r == null) {
             Log.w(tag, "no pending result")
@@ -86,41 +88,44 @@ class MainActivity : FlutterFragmentActivity() {
         }
         pendingResult = null
 
-        if (resultCode != Activity.RESULT_OK || data == null) {
+        if (uris.isEmpty()) {
             r.success(emptyList<String>())
             return
         }
 
-        val uris = mutableListOf<Uri>()
-        val clip = data.clipData
-        if (clip != null) {
-            for (i in 0 until clip.itemCount) {
-                clip.getItemAt(i).uri?.let { uris.add(it) }
-            }
-        } else {
-            data.data?.let { uris.add(it) }
-        }
-        Log.d(tag, "picked ${uris.size} uris")
-
-        // URI 권한이 만료되기 전에 즉시 캐시 디렉토리로 복사
         Thread {
+            val copyPool = Executors.newSingleThreadExecutor()
             val paths = mutableListOf<String>()
             for ((idx, uri) in uris.withIndex()) {
-                try {
-                    val ext = extForUri(uri)
-                    val tmp = File.createTempFile("pick_${System.currentTimeMillis()}_${idx}_", ".$ext", cacheDir)
+                val ext = extForUri(uri)
+                val tmp = File.createTempFile(
+                    "pick_${System.currentTimeMillis()}_${idx}_",
+                    ".$ext",
+                    cacheDir
+                )
+                val future = copyPool.submit {
                     contentResolver.openInputStream(uri)?.use { input ->
                         tmp.outputStream().use { output -> input.copyTo(output) }
                     }
+                }
+                try {
+                    future.get(60, TimeUnit.SECONDS)
                     if (tmp.exists() && tmp.length() > 0) {
                         paths.add(tmp.absolutePath)
                     } else {
                         Log.w(tag, "empty copy for $uri")
+                        tmp.delete()
                     }
+                } catch (e: TimeoutException) {
+                    Log.e(tag, "timeout copying $uri after 60s, skipping")
+                    future.cancel(true)
+                    tmp.delete()
                 } catch (e: Exception) {
                     Log.e(tag, "copy failed for $uri: ${e.message}")
+                    tmp.delete()
                 }
             }
+            copyPool.shutdown()
             Log.d(tag, "returning ${paths.size} paths")
             runOnUiThread {
                 try {

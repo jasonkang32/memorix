@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/personal_provider.dart';
 import '../../../core/db/album_dao.dart';
@@ -134,7 +134,14 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
               children: [
                 const Icon(Icons.inbox_outlined, size: 20),
                 const SizedBox(width: 8),
-                Text('미분류 (앨범 없음)', style: TextStyle(color: Colors.grey[700])),
+                Text(
+                  '미분류 (앨범 없음)',
+                  style: TextStyle(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.8),
+                  ),
+                ),
               ],
             ),
           ),
@@ -226,12 +233,16 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
                   Icon(
                     Icons.photo_album_outlined,
                     size: 64,
-                    color: Colors.grey[300],
+                    color: Theme.of(context).dividerColor,
                   ),
                   const SizedBox(height: 12),
                   Text(
                     '아직 사진이 없습니다',
-                    style: TextStyle(color: Colors.grey[500]),
+                    style: TextStyle(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
                   ),
                 ],
               ),
@@ -432,7 +443,11 @@ class _AlbumEditDialogState extends State<_AlbumEditDialog> {
                       ? '${_fmtDate(_dateStart!)} ~ ${_fmtDate(_dateEnd!)}'
                       : '날짜 선택',
                   style: TextStyle(
-                    color: _dateStart != null ? null : Colors.grey[600],
+                    color: _dateStart != null
+                        ? null
+                        : Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.7),
                     fontSize: 14,
                   ),
                 ),

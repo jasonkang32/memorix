@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
@@ -6,8 +7,6 @@ class OcrService {
   static TextRecognizer? _recognizer;
   static bool _disabled = false;
 
-  /// 지연 초기화 — Korean 스크립트 로드 실패 시 Latin 으로 폴백,
-  /// 그마저도 실패하면 비활성화하여 이후 호출은 즉시 빈 문자열 반환
   static TextRecognizer? _getRecognizer() {
     if (_disabled) return null;
     if (_recognizer != null) return _recognizer;
@@ -37,25 +36,34 @@ class OcrService {
     }
   }
 
-  /// 이미지 파일에서 텍스트를 추출하여 반환
-  /// 실패·미지원 시 빈 문자열 반환 (앱 크래시 없음)
+  /// 이미지 파일에서 텍스트 추출.
+  /// 초기화 포함 전체 8초 타임아웃. 실패 시 빈 문자열 반환.
   static Future<String> extractText(String imagePath) async {
-    final recognizer = _getRecognizer();
-    if (recognizer == null) return '';
+    if (_disabled) return '';
     try {
-      final inputImage = InputImage.fromFilePath(imagePath);
-      final recognized = await recognizer.processImage(inputImage);
-      final text = recognized.text.trim();
-      return text.length >= 2 ? text : '';
-    } catch (e, st) {
-      developer.log(
-        'OCR processImage 실패: $e',
-        error: e,
-        stackTrace: st,
-        name: 'memorix.ocr',
-      );
+      return await _extract(imagePath).timeout(const Duration(seconds: 8));
+    } catch (e) {
+      // 타임아웃 또는 오류 시 recognizer 리셋
+      try {
+        _recognizer?.close();
+      } catch (_) {}
+      _recognizer = null;
+      developer.log('OCR 실패 (타임아웃 포함): $e', name: 'memorix.ocr');
       return '';
     }
+  }
+
+  static Future<String> _extract(String imagePath) async {
+    // 동기 작업(ML Kit 초기화, 파일 로딩) 전에 이벤트 루프에 양보
+    await Future<void>.delayed(Duration.zero);
+
+    final recognizer = _getRecognizer();
+    if (recognizer == null) return '';
+
+    final inputImage = InputImage.fromFilePath(imagePath);
+    final recognized = await recognizer.processImage(inputImage);
+    final text = recognized.text.trim();
+    return text.length >= 2 ? text : '';
   }
 
   static void close() {

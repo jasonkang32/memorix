@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -126,14 +126,17 @@ class _MessengerImportScreenState extends State<MessengerImportScreen>
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 child: _importing
                     ? const SizedBox(
                         width: 16,
                         height: 16,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
                     : Text('${_selected.length}개 가져오기'),
               ),
@@ -163,10 +166,7 @@ class _MessengerImportScreenState extends State<MessengerImportScreen>
               Expanded(
                 child: Text(
                   '원본 파일이 삭제되어도 메모릭스에는 삭제되지 않습니다.',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Color(0xFF00A87C),
-                  ),
+                  style: TextStyle(fontSize: 11, color: Color(0xFF00A87C)),
                 ),
               ),
             ],
@@ -186,18 +186,27 @@ class _MessengerImportScreenState extends State<MessengerImportScreen>
     }
 
     if (Platform.isIOS) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(32),
+          padding: const EdgeInsets.all(32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.lock_outline, size: 48, color: Colors.grey),
-              SizedBox(height: 16),
+              Icon(
+                Icons.lock_outline,
+                size: 48,
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+              const SizedBox(height: 16),
               Text(
                 'iOS에서는 메신저 파일 직접 접근이 제한됩니다.\n갤러리에서 가져오기를 이용해주세요.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey, height: 1.6),
+                style: TextStyle(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.6),
+                  height: 1.6,
+                ),
               ),
             ],
           ),
@@ -206,18 +215,27 @@ class _MessengerImportScreenState extends State<MessengerImportScreen>
     }
 
     if (_apps.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(32),
+          padding: const EdgeInsets.all(32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.chat_bubble_outline, size: 56, color: Colors.grey),
-              SizedBox(height: 16),
+              Icon(
+                Icons.chat_bubble_outline,
+                size: 56,
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+              const SizedBox(height: 16),
               Text(
                 '지원하는 메신저의 파일을 찾을 수 없습니다.\n카카오톡, 라인, 텔레그램이 설치되어 있는지 확인하세요.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey, height: 1.6),
+                style: TextStyle(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.6),
+                  height: 1.6,
+                ),
               ),
             ],
           ),
@@ -227,25 +245,29 @@ class _MessengerImportScreenState extends State<MessengerImportScreen>
 
     return TabBarView(
       controller: _tabCtrl,
-      children: _apps.map((app) => _AppFileList(
-        app: app,
-        files: _fileCache[app.id],
-        isScanning: _scanning[app.id] ?? false,
-        selected: _selected,
-        onToggle: (path) {
-          setState(() {
-            if (_selected.contains(path)) {
-              _selected.remove(path);
-            } else if (_selected.length < 20) {
-              _selected.add(path);
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('최대 20개까지 선택할 수 있습니다')),
-              );
-            }
-          });
-        },
-      )).toList(),
+      children: _apps
+          .map(
+            (app) => _AppFileList(
+              app: app,
+              files: _fileCache[app.id],
+              isScanning: _scanning[app.id] ?? false,
+              selected: _selected,
+              onToggle: (path) {
+                setState(() {
+                  if (_selected.contains(path)) {
+                    _selected.remove(path);
+                  } else if (_selected.length < 20) {
+                    _selected.add(path);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('최대 20개까지 선택할 수 있습니다')),
+                    );
+                  }
+                });
+              },
+            ),
+          )
+          .toList(),
     );
   }
 }
@@ -283,7 +305,11 @@ class _AppFileList extends StatelessWidget {
               const SizedBox(height: 16),
               Text(
                 '${app.name}에서 받은 파일이 없습니다',
-                style: const TextStyle(color: Colors.grey),
+                style: TextStyle(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
               ),
             ],
           ),
@@ -331,7 +357,10 @@ class _FileTile extends StatelessWidget {
             ? const Color(0xFF00C896).withValues(alpha: 0.1)
             : Colors.transparent,
         child: ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 4,
+          ),
           leading: Stack(
             children: [
               ClipRRect(
@@ -339,7 +368,7 @@ class _FileTile extends StatelessWidget {
                 child: SizedBox(
                   width: 56,
                   height: 56,
-                  child: _buildThumb(file),
+                  child: _buildThumb(context, file),
                 ),
               ),
               if (isSelected)
@@ -353,7 +382,11 @@ class _FileTile extends StatelessWidget {
                       color: Color(0xFF00C896),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.check, color: Colors.white, size: 13),
+                    child: const Icon(
+                      Icons.check,
+                      color: Colors.white,
+                      size: 13,
+                    ),
                   ),
                 ),
             ],
@@ -369,15 +402,18 @@ class _FileTile extends StatelessWidget {
           ),
           subtitle: Text(
             '${_dateFmt.format(file.modifiedAt)}  ·  ${_sizeLabel(file.sizeKb)}',
-            style: const TextStyle(fontSize: 11, color: Colors.grey),
+            style: TextStyle(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
           ),
-          trailing: _typeChip(file.type, isDark),
+          trailing: _typeChip(context, file.type, isDark),
         ),
       ),
     );
   }
 
-  Widget _buildThumb(MessengerFile file) {
+  Widget _buildThumb(BuildContext context, MessengerFile file) {
     if (file.type == 'document') {
       return Container(
         color: Colors.blue[50],
@@ -389,32 +425,45 @@ class _FileTile extends StatelessWidget {
     final f = File(file.path);
     if (f.existsSync()) {
       if (file.type == 'photo') {
-        return Image.file(f, fit: BoxFit.cover,
-            errorBuilder: (ctx, err, st) => _placeholder());
+        return Image.file(
+          f,
+          fit: BoxFit.cover,
+          errorBuilder: (ctx, err, st) => _placeholder(context),
+        );
       }
       // 영상은 아이콘
       return Container(
-        color: Colors.grey[200],
-        child: const Center(
-          child: Icon(Icons.videocam_outlined, color: Colors.grey, size: 28),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        child: Center(
+          child: Icon(
+            Icons.videocam_outlined,
+            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+            size: 28,
+          ),
         ),
       );
     }
-    return _placeholder();
+    return _placeholder(context);
   }
 
-  Widget _placeholder() => Container(
-      color: Colors.grey[200],
-      child: const Icon(Icons.image_outlined, color: Colors.grey));
+  Widget _placeholder(BuildContext context) => Container(
+    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+    child: Icon(
+      Icons.image_outlined,
+      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+    ),
+  );
 
-  Widget _typeChip(String type, bool isDark) {
+  Widget _typeChip(BuildContext context, String type, bool isDark) {
     final labels = {'photo': '사진', 'video': '영상', 'document': '문서'};
     final colors = {
       'photo': const Color(0xFF1A73E8),
       'video': const Color(0xFFFF6B9D),
       'document': const Color(0xFFFFB800),
     };
-    final color = colors[type] ?? Colors.grey;
+    final color =
+        colors[type] ??
+        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -423,7 +472,11 @@ class _FileTile extends StatelessWidget {
       ),
       child: Text(
         labels[type] ?? type,
-        style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600),
+        style: TextStyle(
+          fontSize: 11,
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -448,17 +501,24 @@ class _PermissionDeniedView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.folder_off_outlined, size: 56, color: Colors.grey),
+            Icon(
+              Icons.folder_off_outlined,
+              size: 56,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
             const SizedBox(height: 16),
             const Text(
               '파일 접근 권한이 필요합니다',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               '메신저 파일을 가져오려면\n저장소 접근 권한을 허용해주세요.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, height: 1.6),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                height: 1.6,
+              ),
             ),
             const SizedBox(height: 24),
             FilledButton.icon(

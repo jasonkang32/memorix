@@ -29,7 +29,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _OnboardPage(
       emoji: '🔒',
       title: '내 사진, 밖에 안 나갑니다',
-      desc: '갤러리 대신 메모릭스(Memorix)에 보관하세요.\n기기 내부에만 저장되어 외부에 노출되지 않고,\n내가 원할 때 바로 찾을 수 있습니다.',
+      desc:
+          '갤러리 대신 메모릭스(Memorix)에 보관하세요.\n기기 내부에만 저장되어 외부에 노출되지 않고,\n내가 원할 때 바로 찾을 수 있습니다.',
       gradientColors: [Color(0xFF00C896), Color(0xFF00897B)],
     ),
     _OnboardPage(
@@ -81,7 +82,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             right: 0,
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 16,
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -107,9 +111,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     _page < _pages.length - 1
                         ? FilledButton(
                             style: FilledButton.styleFrom(
-                              backgroundColor: Colors.white.withValues(alpha: 0.25),
+                              backgroundColor: Colors.white.withValues(
+                                alpha: 0.25,
+                              ),
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 28, vertical: 12),
+                                horizontal: 28,
+                                vertical: 12,
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14),
                               ),
@@ -118,25 +126,31 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               duration: const Duration(milliseconds: 300),
                               curve: Curves.easeInOut,
                             ),
-                            child: const Text('다음',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700,
-                                )),
+                            child: const Text(
+                              '다음',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           )
                         : FilledButton(
                             style: FilledButton.styleFrom(
                               backgroundColor: Colors.white,
                               foregroundColor: const Color(0xFF00C896),
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 32, vertical: 12),
+                                horizontal: 32,
+                                vertical: 12,
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14),
                               ),
                             ),
                             onPressed: _done,
-                            child: const Text('시작하기',
-                                style: TextStyle(fontWeight: FontWeight.w800)),
+                            child: const Text(
+                              '시작하기',
+                              style: TextStyle(fontWeight: FontWeight.w800),
+                            ),
                           ),
                   ],
                 ),
@@ -151,8 +165,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               child: _page < _pages.length - 1
                   ? TextButton(
                       onPressed: _done,
-                      child: const Text('건너뛰기',
-                          style: TextStyle(color: Colors.white70)),
+                      child: const Text(
+                        '건너뛰기',
+                        style: TextStyle(color: Colors.white70),
+                      ),
                     )
                   : const SizedBox.shrink(),
             ),

@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/media_item.dart';
 import 'encrypted_image.dart';
@@ -25,7 +25,7 @@ class MediaThumbnailCard extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            _buildThumbnail(),
+            _buildThumbnail(context),
             if (item.mediaType == MediaType.video)
               const Center(
                 child: Icon(
@@ -36,9 +36,15 @@ class MediaThumbnailCard extends StatelessWidget {
               ),
             if (item.mediaType == MediaType.document)
               Container(
-                color: Colors.grey[200],
-                child: const Center(
-                  child: Icon(Icons.description, color: Colors.grey, size: 32),
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: Center(
+                  child: Icon(
+                    Icons.description,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.6),
+                    size: 32,
+                  ),
                 ),
               ),
             if (item.driveSynced == 0)
@@ -64,7 +70,7 @@ class MediaThumbnailCard extends StatelessWidget {
     );
   }
 
-  Widget _buildThumbnail() {
+  Widget _buildThumbnail(BuildContext context) {
     final thumb = item.thumbPath;
     if (item.isEncrypted) {
       // Secret 보관함: thumbPath 우선, 없으면 원본
@@ -73,9 +79,13 @@ class MediaThumbnailCard extends StatelessWidget {
           : item.filePath;
       if (item.mediaType == MediaType.document) {
         return Container(
-          color: Colors.grey[200],
-          child: const Center(
-            child: Icon(Icons.description, color: Colors.grey, size: 32),
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          child: Center(
+            child: Icon(
+              Icons.description,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              size: 32,
+            ),
           ),
         );
       }
@@ -88,6 +98,8 @@ class MediaThumbnailCard extends StatelessWidget {
     if (item.mediaType == MediaType.photo && File(file).existsSync()) {
       return Image.file(File(file), fit: BoxFit.cover);
     }
-    return Container(color: Colors.grey[200]);
+    return Container(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+    );
   }
 }

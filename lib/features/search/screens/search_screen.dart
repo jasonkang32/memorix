@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/search_provider.dart';
 import '../../../shared/models/media_item.dart';
@@ -102,7 +102,11 @@ class _SpaceFilterBar extends StatelessWidget {
       height: 44,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          ),
+        ),
       ),
       child: Row(
         children: [
@@ -145,7 +149,11 @@ class _TagFilterBar extends ConsumerWidget {
           height: 44,
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surfaceContainerLowest,
-            border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
+            border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          ),
+        ),
           ),
           child: ListView(
             scrollDirection: Axis.horizontal,
@@ -195,7 +203,11 @@ class _PersonalFilterBar extends ConsumerWidget {
       constraints: const BoxConstraints(maxHeight: 96),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerLowest,
-        border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          ),
+        ),
       ),
       child: ListView(
         shrinkWrap: true,
@@ -298,7 +310,7 @@ class _FilterRow extends StatelessWidget {
           label,
           style: TextStyle(
             fontSize: 11,
-            color: Colors.grey[600],
+            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -324,16 +336,26 @@ class _SearchHint extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.search, size: 56, color: Colors.grey[300]),
+          Icon(
+            Icons.search,
+            size: 56,
+            color: Theme.of(context).dividerColor,
+          ),
           const SizedBox(height: 12),
           Text(
             '제목, 메모를 입력하세요',
-            style: TextStyle(color: Colors.grey[500], fontSize: 15),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              fontSize: 15,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
             'Work + Personal 동시 검색',
-            style: TextStyle(color: Colors.grey[400], fontSize: 12),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+              fontSize: 12,
+            ),
           ),
         ],
       ),
@@ -352,11 +374,18 @@ class _EmptyResult extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.search_off, size: 56, color: Colors.grey[300]),
+          Icon(
+            Icons.search_off,
+            size: 56,
+            color: Theme.of(context).dividerColor,
+          ),
           const SizedBox(height: 12),
           Text(
             '"$query" 결과 없음',
-            style: TextStyle(color: Colors.grey[500], fontSize: 15),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              fontSize: 15,
+            ),
           ),
         ],
       ),
@@ -380,7 +409,7 @@ class _ResultGrid extends ConsumerWidget {
               '결과 ${items.length}개',
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.grey[600],
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
                 fontWeight: FontWeight.w500,
               ),
             ),

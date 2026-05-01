@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/tag.dart';
+import '../theme/app_theme.dart';
 
 class TagChipRow extends StatelessWidget {
   final List<Tag> tags;
@@ -38,7 +39,7 @@ class TagChipRow extends StatelessWidget {
     try {
       return Color(int.parse(hex.replaceFirst('#', 'FF'), radix: 16));
     } catch (_) {
-      return Colors.grey;
+      return AppColors.mutedTextLight;
     }
   }
 }

@@ -12,7 +12,9 @@ class WorkFilter {
   const WorkFilter({this.countryCode, this.region, this.mediaType});
 }
 
-final workFilterProvider = StateProvider<WorkFilter>((ref) => const WorkFilter());
+final workFilterProvider = StateProvider<WorkFilter>(
+  (ref) => const WorkFilter(),
+);
 
 final workMediaProvider = FutureProvider<List<MediaItem>>((ref) async {
   final filter = ref.watch(workFilterProvider);

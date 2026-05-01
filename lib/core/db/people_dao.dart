@@ -20,8 +20,11 @@ class PeopleDao {
 
   Future<int> insert(Person person) async {
     final db = await _db;
-    return db.insert('people', person.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.ignore);
+    return db.insert(
+      'people',
+      person.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
   }
 
   Future<int> delete(int id) async {
@@ -31,26 +34,31 @@ class PeopleDao {
 
   Future<List<Person>> findByMediaId(int mediaId) async {
     final db = await _db;
-    final rows = await db.rawQuery('''
+    final rows = await db.rawQuery(
+      '''
       SELECT p.* FROM people p
       JOIN media_people mp ON p.id = mp.person_id
       WHERE mp.media_id = ?
       ORDER BY p.name ASC
-    ''', [mediaId]);
+    ''',
+      [mediaId],
+    );
     return rows.map(Person.fromMap).toList();
   }
 
   Future<void> setMediaPeople(int mediaId, List<int> personIds) async {
     final db = await _db;
     await db.transaction((txn) async {
-      await txn.delete('media_people',
-          where: 'media_id = ?', whereArgs: [mediaId]);
+      await txn.delete(
+        'media_people',
+        where: 'media_id = ?',
+        whereArgs: [mediaId],
+      );
       for (final pid in personIds) {
-        await txn.insert(
-          'media_people',
-          {'media_id': mediaId, 'person_id': pid},
-          conflictAlgorithm: ConflictAlgorithm.ignore,
-        );
+        await txn.insert('media_people', {
+          'media_id': mediaId,
+          'person_id': pid,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
       }
     });
   }

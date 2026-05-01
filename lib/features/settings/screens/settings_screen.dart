@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/drive_service.dart';
 import '../../../core/services/storage_service.dart';
+import '../../../shared/theme/app_theme.dart';
 
 import '../../../features/auth/providers/lock_provider.dart';
 import '../../../features/auth/screens/pin_setup_screen.dart';
@@ -212,8 +213,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _launchPrivacyPolicy() async {
     final uri = Uri.parse('https://memorix.app/privacy');
-    if (await canLaunchUrl(uri))
+    if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   Future<void> _launchFeedback() async {
@@ -431,7 +433,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: const Text('버전'),
             trailing: Text(
               _version.isEmpty ? '...' : _version,
-              style: const TextStyle(color: Colors.grey),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
             ),
           ),
           ListTile(
@@ -439,7 +443,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: const Text('빌드 번호'),
             trailing: Text(
               _buildNumber.isEmpty ? '...' : _buildNumber,
-              style: const TextStyle(color: Colors.grey),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
             ),
           ),
           ListTile(
@@ -580,7 +586,7 @@ class _StorageCard extends StatelessWidget {
               _legend(context, Colors.orange[400]!, '영상', b.videosLabel),
               _legend(context, Colors.green[400]!, '문서', b.documentsLabel),
               _legend(context, Colors.purple[400]!, '보고서', b.reportsLabel),
-              _legend(context, Colors.grey[400]!, 'DB', b.dbLabel),
+              _legend(context, AppColors.mutedTextLight, 'DB', b.dbLabel),
             ],
           ),
         ],
@@ -617,7 +623,9 @@ class _StorageBar extends StatelessWidget {
         child: LinearProgressIndicator(
           value: 0,
           minHeight: 10,
-          backgroundColor: Colors.grey[200],
+          backgroundColor: Theme.of(
+            context,
+          ).colorScheme.surfaceContainerHighest,
         ),
       );
     }
@@ -626,7 +634,7 @@ class _StorageBar extends StatelessWidget {
       (breakdown.videos, Colors.orange[400]!),
       (breakdown.documents, Colors.green[400]!),
       (breakdown.reports, Colors.purple[400]!),
-      (breakdown.db, Colors.grey[400]!),
+      (breakdown.db, AppColors.mutedTextLight),
     ];
     return ClipRRect(
       borderRadius: BorderRadius.circular(4),

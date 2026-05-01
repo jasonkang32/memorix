@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../../core/services/media_capture_service.dart';
 import '../models/media_item.dart';
@@ -67,7 +67,7 @@ class CaptureBottomSheet extends StatelessWidget {
               height: 4,
               margin: const EdgeInsets.only(bottom: 12),
               decoration: BoxDecoration(
-                color: Colors.grey[300],
+                color: Theme.of(context).dividerColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -166,7 +166,10 @@ class CaptureBottomSheet extends StatelessWidget {
       subtitle: subtitle != null
           ? Text(
               subtitle,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
             )
           : null,
       onTap: onTap,

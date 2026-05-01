@@ -77,23 +77,25 @@ class MediaSaveService {
     );
   }
 
-  /// Phase 2: OCR + AI 태그 — 진단을 위해 임시 비활성화
+  /// Phase 2: OCR + AI 태그.
+  ///
+  /// saveAll이 phase 2를 순차 루프로 돌리므로 다중 폭발 위험은 완화되어 있다.
+  /// 추가로 OCR과 태그 사이에 한 번 yield해서 GC 기회를 준다.
   static Future<void> _enhance(
     int mediaId,
     CapturedMedia captured,
     MediaSpace space,
   ) async {
-    // TODO: 갤러리 다중 가져오기 블랙스크린 해결 후 재활성화
-    // ML Kit / OCR 이 다중 파일 처리 시 메모리 폭발 원인으로 의심됨
-    //
-    // if (captured.mediaType == 'photo' || captured.mediaType == 'document') {
-    //   final ocrText = await OcrService.extractText(captured.filePath);
-    //   if (ocrText.isNotEmpty) {
-    //     await _mediaDao.updateOcrText(mediaId, ocrText);
-    //   }
-    // }
-    // await _suggestAndApplyTags(captured, space, mediaId);
-    return;
+    if (captured.mediaType == 'photo' || captured.mediaType == 'document') {
+      final ocrText = await OcrService.extractText(captured.filePath)
+          .timeout(const Duration(seconds: 15), onTimeout: () => '');
+      if (ocrText.isNotEmpty) {
+        await _mediaDao.updateOcrText(mediaId, ocrText);
+      }
+    }
+    // 다음 microtask로 양보 — ML Kit 리소스 해제 기회.
+    await Future<void>.delayed(Duration.zero);
+    await _suggestAndApplyTags(captured, space, mediaId);
   }
 
   /// 다중 저장 (배치)

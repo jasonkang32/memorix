@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -18,6 +18,7 @@ import '../../../shared/widgets/media_timeline.dart';
 import '../../../shared/screens/media_detail_screen.dart';
 import '../../../shared/screens/media_viewer_screen.dart';
 import 'album_detail_screen.dart';
+import '../../../shared/theme/app_theme.dart';
 
 class PersonalScreen extends ConsumerStatefulWidget {
   const PersonalScreen({super.key});
@@ -137,7 +138,7 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF7B61FF), Color(0xFF1A73E8)],
+                colors: [AppColors.brandSecondary, AppColors.workAccent],
               ),
               borderRadius: BorderRadius.circular(8),
             ),
@@ -219,19 +220,25 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
 
   Widget _buildSearchBody() {
     if (_query.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
           '검색어를 입력하세요',
-          style: TextStyle(color: Colors.grey, fontSize: 14),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+            fontSize: 14,
+          ),
         ),
       );
     }
     final results = _searchResults ?? [];
     if (results.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
           '검색 결과가 없습니다',
-          style: TextStyle(color: Colors.grey, fontSize: 14),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+            fontSize: 14,
+          ),
         ),
       );
     }
@@ -300,9 +307,14 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
                   const SizedBox(height: 16),
                   Text(total > 1 ? '$done / $total 저장 중...' : '저장 중...'),
                   const SizedBox(height: 4),
-                  const Text(
+                  Text(
                     'AI 분석은 백그라운드에서 진행됩니다',
-                    style: TextStyle(fontSize: 11, color: Colors.grey),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
                   ),
                   if (total > 1) ...[
                     const SizedBox(height: 8),
@@ -583,13 +595,17 @@ class _AlbumGridViewState extends State<_AlbumGridView> {
   @override
   Widget build(BuildContext context) {
     if (widget.albums.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(32),
+          padding: const EdgeInsets.all(32),
           child: Text(
             '앨범이 없습니다\n우측 상단 버튼으로 앨범을 만드세요',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey, fontSize: 14, height: 1.7),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              fontSize: 14,
+              height: 1.7,
+            ),
           ),
         ),
       );
@@ -666,7 +682,12 @@ class _AlbumCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       _fmtDateRange(album.dateStart, album.dateEnd),
-                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.7),
+                      ),
                     ),
                   ],
                 ],
@@ -724,7 +745,7 @@ class _EmptySecretView extends StatelessWidget {
               height: 96,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF7B61FF), Color(0xFF1A73E8)],
+                  colors: [AppColors.brandSecondary, AppColors.workAccent],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -747,14 +768,21 @@ class _EmptySecretView extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
-                color: Colors.grey[500],
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.6),
                 height: 1.6,
               ),
             ),
             const SizedBox(height: 4),
             Text(
               '우측 하단 + 버튼으로 사진을 추가하세요',
-              style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.4),
+              ),
             ),
           ],
         ),
@@ -802,7 +830,11 @@ class _SecretLockGateState extends State<_SecretLockGate> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.lock_outlined, size: 64, color: Colors.grey[400]),
+            Icon(
+              Icons.lock_outlined,
+              size: 64,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+            ),
             const SizedBox(height: 20),
             const Text(
               'Secret 보관함이 잠겨 있어요',
@@ -811,7 +843,10 @@ class _SecretLockGateState extends State<_SecretLockGate> {
             const SizedBox(height: 8),
             Text(
               '생체인증 또는 기기 비밀번호로 잠금 해제',
-              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                fontSize: 13,
+              ),
             ),
             const SizedBox(height: 32),
             _unlocking
@@ -909,7 +944,11 @@ class _CreateAlbumDialogState extends State<_CreateAlbumDialog> {
                     ? '${_fmtDate(_dateStart!)} ~ ${_fmtDate(_dateEnd!)}'
                     : '날짜 선택',
                 style: TextStyle(
-                  color: _dateStart != null ? null : Colors.grey[600],
+                  color: _dateStart != null
+                      ? null
+                      : Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.7),
                   fontSize: 14,
                 ),
               ),

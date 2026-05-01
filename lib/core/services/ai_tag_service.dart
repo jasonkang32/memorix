@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
 import '../../shared/models/media_item.dart';
 
@@ -46,7 +48,9 @@ class AiTagService {
   ) async {
     try {
       final inputImage = InputImage.fromFilePath(imagePath);
-      final labels = await _labeler.processImage(inputImage);
+      final labels = await _labeler
+          .processImage(inputImage)
+          .timeout(const Duration(seconds: 10));
 
       final tagKeys = <String>{};
       for (final label in labels) {
@@ -54,6 +58,8 @@ class AiTagService {
         if (key != null) tagKeys.add(key);
       }
       return tagKeys.toList();
+    } on TimeoutException {
+      return [];
     } catch (_) {
       return [];
     }

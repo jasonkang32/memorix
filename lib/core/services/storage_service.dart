@@ -17,7 +17,11 @@ enum PhotoQuality {
   final String label;
   final String desc;
   final int quality;
-  const PhotoQuality({required this.label, required this.desc, required this.quality});
+  const PhotoQuality({
+    required this.label,
+    required this.desc,
+    required this.quality,
+  });
 }
 
 class StorageService {
@@ -26,28 +30,39 @@ class StorageService {
   static const _keyLocation = 'storage_location';
   static const _keyQuality = 'photo_quality';
 
+  // 설정 캐시 — FlutterSecureStorage는 첫 접근이 느리므로 메모리에 캐시
+  static StorageLocation? _cachedLocation;
+  static PhotoQuality? _cachedQuality;
+
   // ── 설정 읽기/저장 ─────────────────────────────────────────
 
   static Future<StorageLocation> getStorageLocation() async {
+    if (_cachedLocation != null) return _cachedLocation!;
     final v = await _storage.read(key: _keyLocation);
-    if (v == 'external' && Platform.isAndroid) return StorageLocation.external;
-    return StorageLocation.internal;
+    _cachedLocation = (v == 'external' && Platform.isAndroid)
+        ? StorageLocation.external
+        : StorageLocation.internal;
+    return _cachedLocation!;
   }
 
   static Future<void> setStorageLocation(StorageLocation loc) async {
     await _storage.write(key: _keyLocation, value: loc.name);
+    _cachedLocation = loc;
   }
 
   static Future<PhotoQuality> getPhotoQuality() async {
+    if (_cachedQuality != null) return _cachedQuality!;
     final v = await _storage.read(key: _keyQuality);
-    return PhotoQuality.values.firstWhere(
+    _cachedQuality = PhotoQuality.values.firstWhere(
       (q) => q.name == v,
       orElse: () => PhotoQuality.original,
     );
+    return _cachedQuality!;
   }
 
   static Future<void> setPhotoQuality(PhotoQuality quality) async {
     await _storage.write(key: _keyQuality, value: quality.name);
+    _cachedQuality = quality;
   }
 
   // ── 저장소 기본 경로 ────────────────────────────────────────
@@ -71,7 +86,7 @@ class StorageService {
   static Future<String> _ensureDir(String subPath) async {
     final base = await _baseDir;
     final dir = Directory(p.join(base, subPath));
-    if (!dir.existsSync()) dir.createSync(recursive: true);
+    if (!await dir.exists()) await dir.create(recursive: true);
     return dir.path;
   }
 
@@ -83,7 +98,10 @@ class StorageService {
   ) async {
     final now = DateTime.now();
     final sub = p.join(
-        'photos', now.year.toString(), now.month.toString().padLeft(2, '0'));
+      'photos',
+      now.year.toString(),
+      now.month.toString().padLeft(2, '0'),
+    );
     final dir = await _ensureDir(sub);
     final id = _uuid.v4();
     final quality = await getPhotoQuality();
@@ -92,13 +110,13 @@ class StorageService {
     if (quality == PhotoQuality.original) {
       await File(sourcePath).copy(destPath);
     } else {
-      // 지정 품질로 압축 저장
+      // 지정 품질로 압축 저장 — 15초 타임아웃
       try {
         final result = await FlutterImageCompress.compressAndGetFile(
           sourcePath,
           destPath,
           quality: quality.quality,
-        );
+        ).timeout(const Duration(seconds: 15), onTimeout: () => null);
         if (result == null) {
           // 압축 결과 null → 원본 복사
           await File(sourcePath).copy(destPath);
@@ -109,7 +127,7 @@ class StorageService {
       }
     }
 
-    // 썸네일 생성 (항상 압축)
+    // 썸네일 생성 (항상 압축) — 5초 타임아웃
     String thumbPath = p.join(dir, '${id}_thumb.jpg');
     try {
       final result = await FlutterImageCompress.compressAndGetFile(
@@ -118,10 +136,10 @@ class StorageService {
         minWidth: 300,
         minHeight: 200,
         quality: 75,
-      );
-      if (result == null) thumbPath = destPath; // 실패 시 원본 경로 사용
+      ).timeout(const Duration(seconds: 5));
+      if (result == null) thumbPath = destPath;
     } catch (_) {
-      thumbPath = destPath; // 압축 실패 시 원본 경로 사용
+      thumbPath = destPath;
     }
 
     return (filePath: destPath, thumbPath: thumbPath);
@@ -131,11 +149,15 @@ class StorageService {
   static Future<String> saveVideo(String sourcePath) async {
     final now = DateTime.now();
     final sub = p.join(
-        'videos', now.year.toString(), now.month.toString().padLeft(2, '0'));
+      'videos',
+      now.year.toString(),
+      now.month.toString().padLeft(2, '0'),
+    );
     final dir = await _ensureDir(sub);
     final id = _uuid.v4();
-    final ext =
-        p.extension(sourcePath).isEmpty ? '.mp4' : p.extension(sourcePath);
+    final ext = p.extension(sourcePath).isEmpty
+        ? '.mp4'
+        : p.extension(sourcePath);
     final destPath = p.join(dir, '$id$ext');
     await File(sourcePath).copy(destPath);
     return destPath;
@@ -144,8 +166,11 @@ class StorageService {
   /// 문서 파일을 저장소로 복사하고 [filePath]를 반환
   static Future<String> saveDocument(String sourcePath) async {
     final now = DateTime.now();
-    final sub = p.join('documents', now.year.toString(),
-        now.month.toString().padLeft(2, '0'));
+    final sub = p.join(
+      'documents',
+      now.year.toString(),
+      now.month.toString().padLeft(2, '0'),
+    );
     final dir = await _ensureDir(sub);
     final id = _uuid.v4();
     final ext = p.extension(sourcePath);
@@ -158,7 +183,7 @@ class StorageService {
   static Future<String> saveReport(List<int> bytes) async {
     final base = await internalBaseDir;
     final dir = Directory(p.join(base, 'reports'));
-    if (!dir.existsSync()) dir.createSync(recursive: true);
+    if (!await dir.exists()) await dir.create(recursive: true);
     final id = _uuid.v4();
     final path = p.join(dir.path, '${id}_report.pdf');
     await File(path).writeAsBytes(bytes);
@@ -247,16 +272,23 @@ class StorageBreakdown {
   });
 
   factory StorageBreakdown.zero() => const StorageBreakdown(
-      photos: 0, videos: 0, documents: 0, reports: 0, db: 0);
+    photos: 0,
+    videos: 0,
+    documents: 0,
+    reports: 0,
+    db: 0,
+  );
 
   int get total => photos + videos + documents + reports + db;
 
   String _fmt(int bytes) {
     if (bytes == 0) return '0 KB';
-    if (bytes < 1024 * 1024)
+    if (bytes < 1024 * 1024) {
       return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024)
+    }
+    if (bytes < 1024 * 1024 * 1024) {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 

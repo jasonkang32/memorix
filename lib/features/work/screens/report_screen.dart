@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
@@ -59,9 +59,9 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
 
   Future<void> _generate() async {
     if (_selectedItems.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('미디어를 1개 이상 선택하세요')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('미디어를 1개 이상 선택하세요')));
       return;
     }
 
@@ -83,14 +83,17 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
         MaterialPageRoute(
           builder: (ctx) => _PdfPreviewScreen(
             pdfPath: pdfPath,
-            title: _titleCtrl.text.trim().isEmpty ? '보고서' : _titleCtrl.text.trim(),
+            title: _titleCtrl.text.trim().isEmpty
+                ? '보고서'
+                : _titleCtrl.text.trim(),
           ),
         ),
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('PDF 생성 오류: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('PDF 생성 오류: $e')));
       }
     } finally {
       if (mounted) setState(() => _generating = false);
@@ -154,39 +157,44 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                     ),
                     TextButton(
                       onPressed: () => setState(() {
-                        _selectedItems = _selectedItems.length == _allItems.length
+                        _selectedItems =
+                            _selectedItems.length == _allItems.length
                             ? []
                             : List.from(_allItems);
                       }),
                       child: Text(
-                        _selectedItems.length == _allItems.length ? '전체 해제' : '전체 선택',
+                        _selectedItems.length == _allItems.length
+                            ? '전체 해제'
+                            : '전체 선택',
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
-                ..._allItems.map((item) => _MediaSelectTile(
-                      item: item,
-                      selected: _selectedItems.contains(item),
-                      onToggle: (selected) => setState(() {
-                        if (selected) {
-                          _selectedItems.add(item);
-                        } else {
-                          _selectedItems.remove(item);
-                        }
-                      }),
-                    )),
+                ..._allItems.map(
+                  (item) => _MediaSelectTile(
+                    item: item,
+                    selected: _selectedItems.contains(item),
+                    onToggle: (selected) => setState(() {
+                      if (selected) {
+                        _selectedItems.add(item);
+                      } else {
+                        _selectedItems.remove(item);
+                      }
+                    }),
+                  ),
+                ),
               ],
             ),
     );
   }
 
   String get _reportTitle => switch (widget.reportType) {
-        ReportType.tripReport => '출장보고서',
-        ReportType.siteReport => '현장분위기',
-        ReportType.faultReport => '장애현상',
-        ReportType.photoSheet => '사진대지',
-      };
+    ReportType.tripReport => '출장보고서',
+    ReportType.siteReport => '현장분위기',
+    ReportType.faultReport => '장애현상',
+    ReportType.photoSheet => '사진대지',
+  };
 }
 
 class _MediaSelectTile extends StatelessWidget {
@@ -207,11 +215,7 @@ class _MediaSelectTile extends StatelessWidget {
       onChanged: (v) => onToggle(v ?? false),
       secondary: ClipRRect(
         borderRadius: BorderRadius.circular(6),
-        child: SizedBox(
-          width: 48,
-          height: 48,
-          child: _buildThumb(),
-        ),
+        child: SizedBox(width: 48, height: 48, child: _buildThumb(context)),
       ),
       title: Text(
         item.title.isEmpty ? '(제목 없음)' : item.title,
@@ -230,7 +234,7 @@ class _MediaSelectTile extends StatelessWidget {
     );
   }
 
-  Widget _buildThumb() {
+  Widget _buildThumb(BuildContext context) {
     if (item.mediaType == MediaType.document) {
       return Container(
         color: Colors.blue[50],
@@ -243,12 +247,12 @@ class _MediaSelectTile extends StatelessWidget {
       return Image.file(f, fit: BoxFit.cover);
     }
     return Container(
-      color: Colors.grey[200],
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: Icon(
         item.mediaType == MediaType.video
             ? Icons.videocam_outlined
             : Icons.image_outlined,
-        color: Colors.grey,
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
       ),
     );
   }

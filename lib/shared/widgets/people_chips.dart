@@ -77,9 +77,14 @@ class _PeopleChipsState extends State<PeopleChips> {
                 onTap: () => _togglePerson(p),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
-                    color: selected ? _primary : _primary.withValues(alpha: 0.12),
+                    color: selected
+                        ? _primary
+                        : _primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: _primary, width: 1.5),
                   ),
@@ -119,8 +124,10 @@ class _PeopleChipsState extends State<PeopleChips> {
                   hintText: '이름 입력 (예: 엄마, 홍길동)',
                   hintStyle: TextStyle(fontSize: 13),
                   prefixIcon: Icon(Icons.person_add_outlined, size: 18),
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                   isDense: true,
                 ),
                 onSubmitted: (_) => _addPerson(),
@@ -131,10 +138,13 @@ class _PeopleChipsState extends State<PeopleChips> {
               onPressed: _addPerson,
               style: FilledButton.styleFrom(
                 backgroundColor: _primary,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               child: const Text('추가', style: TextStyle(fontSize: 13)),
             ),

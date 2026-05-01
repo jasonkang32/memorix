@@ -68,7 +68,7 @@ final homeSummaryProvider = FutureProvider<HomeSummary>((ref) async {
     dao.countDistinctCountries(),
     dao.sumFileSizeKb(),
     dao.findPendingSync(),
-    dao.findRecent(limit: 10),
+    dao.findRecent(space: 'work', limit: 10),
     dao.activityByDay(days: 30),
     dao.topTags(limit: 6),
     StorageService.calcBreakdown(),

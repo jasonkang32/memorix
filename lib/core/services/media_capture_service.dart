@@ -87,26 +87,7 @@ class MediaCaptureService {
       return importFromXFiles(files, space: space);
     } catch (e, st) {
       developer.log(
-        'pickGallery: image_picker 실패, file_picker로 재시도 — $e',
-        error: e,
-        stackTrace: st,
-        name: 'memorix.capture',
-      );
-    }
-
-    try {
-      final result = await FilePicker.platform
-          .pickFiles(
-            type: FileType.custom,
-            allowedExtensions: _galleryAllowedExtensions,
-            allowMultiple: true,
-          )
-          .timeout(const Duration(minutes: 3));
-      if (result == null || result.files.isEmpty) return [];
-      return importFromPlatformFiles(result.files, space: space);
-    } catch (e, st) {
-      developer.log(
-        'pickGallery: file_picker fallback 실패 — $e',
+        'pickGallery: image_picker 실패 — $e',
         error: e,
         stackTrace: st,
         name: 'memorix.capture',
@@ -141,65 +122,6 @@ class MediaCaptureService {
       );
       return null;
     }
-  }
-
-  static Future<List<CapturedMedia>> importFromPlatformFiles(
-    List<PlatformFile> files, {
-    MediaSpace space = MediaSpace.work,
-  }) async {
-    final results = <CapturedMedia>[];
-    final tmpDir = await getTemporaryDirectory();
-
-    for (final file in files) {
-      String? sourcePath = file.path;
-      String? tmpPath;
-      try {
-        if (sourcePath == null || sourcePath.isEmpty) {
-          final bytes = file.bytes;
-          if (bytes == null || bytes.isEmpty) {
-            developer.log(
-              'importFromPlatformFiles: path/bytes 없음 — ${file.name}',
-              name: 'memorix.capture',
-            );
-            continue;
-          }
-
-          final ext = _extensionForPlatformFile(file);
-          tmpPath = p.join(tmpDir.path, '${_uuid.v4()}$ext');
-          await File(tmpPath)
-              .writeAsBytes(bytes, flush: true)
-              .timeout(const Duration(seconds: 60));
-          sourcePath = tmpPath;
-        }
-
-        final ext = p.extension(sourcePath).toLowerCase();
-        final item = _videoExtensions.contains(ext)
-            ? await _processVideo(
-                sourcePath,
-                deleteSource: tmpPath != null,
-                space: space,
-              ).timeout(const Duration(seconds: 60))
-            : await _processPhoto(
-                sourcePath,
-                deleteSource: tmpPath != null,
-                space: space,
-              ).timeout(const Duration(seconds: 30));
-        results.add(item);
-      } catch (e, st) {
-        developer.log(
-          'importFromPlatformFiles: 항목 처리 실패 — ${file.name}: $e',
-          error: e,
-          stackTrace: st,
-          name: 'memorix.capture',
-        );
-        if (tmpPath != null) {
-          try {
-            File(tmpPath).deleteSync();
-          } catch (_) {}
-        }
-      }
-    }
-    return results;
   }
 
   static Future<List<CapturedMedia>> importFromXFiles(
@@ -260,29 +182,6 @@ class MediaCaptureService {
     '.f4v',
   };
 
-  static const _galleryAllowedExtensions = [
-    'jpg',
-    'jpeg',
-    'png',
-    'webp',
-    'gif',
-    'heic',
-    'heif',
-    'bmp',
-    'mp4',
-    'mov',
-    'avi',
-    'mkv',
-    'webm',
-    '3gp',
-    '3g2',
-    'm4v',
-    'wmv',
-    'ts',
-    'flv',
-    'f4v',
-  ];
-
   static bool _isVideoXFile(XFile file) {
     final mimeType = file.mimeType?.toLowerCase();
     if (mimeType != null && mimeType.startsWith('video/')) return true;
@@ -310,21 +209,6 @@ class MediaCaptureService {
     if (mimeType.contains('mp4')) return '.mp4';
     if (mimeType.contains('quicktime')) return '.mov';
     if (mimeType.startsWith('video/')) return '.mp4';
-    return '.jpg';
-  }
-
-  static String _extensionForPlatformFile(PlatformFile file) {
-    final byName = p.extension(file.name).toLowerCase();
-    if (byName.isNotEmpty) return byName;
-
-    final byPath = p.extension(file.path ?? '').toLowerCase();
-    if (byPath.isNotEmpty) return byPath;
-
-    final byExtension = (file.extension ?? '').toLowerCase();
-    if (byExtension.isNotEmpty) {
-      return byExtension.startsWith('.') ? byExtension : '.$byExtension';
-    }
-
     return '.jpg';
   }
 

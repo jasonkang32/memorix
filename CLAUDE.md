@@ -7,6 +7,49 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Memorix** — 개인 미디어 보관 Flutter 앱. "기억은 빠르게, 보관은 조용하게."  
 업무(Work)와 개인(Personal) 미디어를 완전히 분리하여 보관·검색·보고서 생성까지 처리하는 온디바이스 중심 앱.
 
+## gstack
+
+Use the `/browse` skill from gstack for all web browsing.
+
+Never use `mcp__claude-in-chrome__*` tools.
+
+Available gstack skills:
+
+- `/office-hours`
+- `/plan-ceo-review`
+- `/plan-eng-review`
+- `/plan-design-review`
+- `/design-consultation`
+- `/design-shotgun`
+- `/design-html`
+- `/review`
+- `/ship`
+- `/land-and-deploy`
+- `/canary`
+- `/benchmark`
+- `/browse`
+- `/connect-chrome`
+- `/qa`
+- `/qa-only`
+- `/design-review`
+- `/setup-browser-cookies`
+- `/setup-deploy`
+- `/setup-gbrain`
+- `/retro`
+- `/investigate`
+- `/document-release`
+- `/codex`
+- `/cso`
+- `/autoplan`
+- `/plan-devex-review`
+- `/devex-review`
+- `/careful`
+- `/freeze`
+- `/guard`
+- `/unfreeze`
+- `/gstack-upgrade`
+- `/learn`
+
 ## 빌드 및 실행 명령
 
 ```bash
@@ -27,6 +70,13 @@ flutter test test/path/to/test_file.dart
 
 # 정적 분석
 flutter analyze
+
+# Riverpod 코드 생성 (프로바이더 수정 후 필수)
+dart run build_runner build
+
+# 릴리스 APK 빌드
+flutter build apk --dart-define=APP_FLAVOR=memorix
+# 결과물: build/app/outputs/flutter-apk/app-release.apk
 ```
 
 ## 기술 스택
@@ -142,3 +192,9 @@ Work 4종 (출장보고서·현장분위기·장애현상·사진대지), Person
 | Team | Pro + 팀원 공유 |
 
 인앱 결제 영수증 검증: AWS Lambda (서버리스). 오프라인 시 마지막 검증 후 7일간 Pro 유지.
+
+## 국제화
+
+- 기본 로케일: `ko_KR` (한국어)
+- 보조 로케일: `en_US` (영어)
+- `intl` 패키지 사용, `initializeDateFormatting('ko', null)` 필수 호출

@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +8,7 @@ import '../providers/home_provider.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../shared/models/media_item.dart';
 import '../../../shared/screens/media_viewer_screen.dart';
+import '../../../shared/theme/app_theme.dart';
 import '../../../shared/widgets/encrypted_image.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -254,9 +255,14 @@ class _TotalSummaryCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 3),
-                const Text(
+                Text(
                   '등록 수',
-                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
                 ),
                 const SizedBox(height: 5),
                 Wrap(
@@ -356,7 +362,13 @@ class _StatItem extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 2),
-        Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+          ),
+        ),
       ],
     );
   }
@@ -519,12 +531,15 @@ class _RecentRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Text(
             '등록된 미디어가 없습니다',
-            style: TextStyle(color: Colors.grey, fontSize: 13),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              fontSize: 13,
+            ),
           ),
         ),
       );
@@ -608,7 +623,9 @@ class _RecentThumb extends StatelessWidget {
         ],
       );
     }
-    return Container(color: Colors.grey[200]);
+    return Container(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+    );
   }
 }
 
@@ -632,10 +649,13 @@ class _ActivityChart extends StatelessWidget {
             color: isDark ? const Color(0xFF262D37) : const Color(0xFFECEFF3),
           ),
         ),
-        child: const Center(
+        child: Center(
           child: Text(
             '이번 달 활동이 없습니다',
-            style: TextStyle(color: Colors.grey, fontSize: 13),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              fontSize: 13,
+            ),
           ),
         ),
       );
@@ -703,11 +723,21 @@ class _ActivityChart extends StatelessWidget {
                 DateFormat(
                   'M/d',
                 ).format(DateTime.now().subtract(const Duration(days: 29))),
-                style: const TextStyle(fontSize: 10, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
               ),
               Text(
                 '오늘',
-                style: const TextStyle(fontSize: 10, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
               ),
             ],
           ),
@@ -727,7 +757,7 @@ class _TagRanking extends StatelessWidget {
     try {
       return Color(int.parse(hex.replaceFirst('#', 'FF'), radix: 16));
     } catch (_) {
-      return Colors.grey;
+      return AppColors.mutedTextLight;
     }
   }
 
@@ -765,7 +795,11 @@ class _TagRanking extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: i == 0 ? const Color(0xFFFFB800) : Colors.grey,
+                      color: i == 0
+                          ? const Color(0xFFFFB800)
+                          : Theme.of(
+                              context,
+                            ).colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                   ),
                 ),
@@ -795,9 +829,11 @@ class _TagRanking extends StatelessWidget {
                           ),
                           Text(
                             '$cnt회',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
-                              color: Colors.grey,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurface.withValues(alpha: 0.6),
                             ),
                           ),
                         ],
@@ -907,7 +943,12 @@ class _TypeBreakdown extends StatelessWidget {
                     ),
                     Text(
                       '${item.count}개',
-                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
                     ),
                   ],
                 ),
@@ -994,7 +1035,12 @@ class _StorageUsageCard extends StatelessWidget {
               ),
               Text(
                 total == 0 ? '비어 있음' : '메모릭스 내부 저장',
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
               ),
             ],
           ),
@@ -1048,7 +1094,12 @@ class _StorageUsageCard extends StatelessWidget {
                   const SizedBox(width: 4),
                   Text(
                     '${_segments[i].$1}  ${labels[i]}',
-                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
                   ),
                 ],
               );

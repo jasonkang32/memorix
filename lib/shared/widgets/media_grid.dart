@@ -26,24 +26,24 @@ class MediaGrid extends StatelessWidget {
       slivers: [
         for (final group in groups) ...[
           SliverToBoxAdapter(
-            child: _SectionHeader(label: group.label, count: group.items.length),
+            child: _SectionHeader(
+              label: group.label,
+              count: group.items.length,
+            ),
           ),
           SliverPadding(
             padding: EdgeInsets.fromLTRB(padding.left, 0, padding.right, 2),
             sliver: SliverGrid(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final item = group.items[index];
-                  // 전체 items 기준 index 계산 (뷰어에 전달)
-                  final globalIndex = items.indexOf(item);
-                  return MediaThumbnailCard(
-                    item: item,
-                    onTap: () => onTap(items, globalIndex),
-                    onLongPress: () => onLongPress(item),
-                  );
-                },
-                childCount: group.items.length,
-              ),
+              delegate: SliverChildBuilderDelegate((context, index) {
+                final item = group.items[index];
+                // 전체 items 기준 index 계산 (뷰어에 전달)
+                final globalIndex = items.indexOf(item);
+                return MediaThumbnailCard(
+                  item: item,
+                  onTap: () => onTap(items, globalIndex),
+                  onLongPress: () => onLongPress(item),
+                );
+              }, childCount: group.items.length),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 3,
                 crossAxisSpacing: 2,

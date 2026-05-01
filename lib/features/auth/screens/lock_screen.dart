@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:local_auth/local_auth.dart';
 import '../providers/lock_provider.dart';
@@ -21,7 +21,7 @@ class LockScreen extends ConsumerStatefulWidget {
 class _LockScreenState extends ConsumerState<LockScreen> {
   final List<String> _digits = [];
   String? _errorMsg;
-  bool _biometricReady = false;       // 기기 지원 + 등록 + 활성화
+  bool _biometricReady = false; // 기기 지원 + 등록 + 활성화
   List<BiometricType> _biometricTypes = [];
   bool _hasPin = false;
 
@@ -37,7 +37,9 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     final hasPin = await AuthService.hasPin();
     final canUse = await AuthService.canUseBiometric();
     final enabled = await AuthService.isBiometricEnabled();
-    final types = canUse ? await AuthService.getAvailableBiometrics() : <BiometricType>[];
+    final types = canUse
+        ? await AuthService.getAvailableBiometrics()
+        : <BiometricType>[];
 
     if (!mounted) return;
     setState(() {
@@ -87,8 +89,12 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   }
 
   IconData get _biometricIcon {
-    if (_biometricTypes.contains(BiometricType.face)) return Icons.face_outlined;
-    if (_biometricTypes.contains(BiometricType.iris)) return Icons.remove_red_eye_outlined;
+    if (_biometricTypes.contains(BiometricType.face)) {
+      return Icons.face_outlined;
+    }
+    if (_biometricTypes.contains(BiometricType.iris)) {
+      return Icons.remove_red_eye_outlined;
+    }
     return Icons.fingerprint;
   }
 
@@ -122,7 +128,9 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Icon(
-                widget.isPersonalLock ? Icons.home_outlined : Icons.lock_outline,
+                widget.isPersonalLock
+                    ? Icons.home_outlined
+                    : Icons.lock_outline,
                 size: 36,
                 color: Colors.white,
               ),
@@ -132,18 +140,16 @@ class _LockScreenState extends ConsumerState<LockScreen> {
             // 타이틀
             Text(
               widget.isPersonalLock ? 'Personal Space' : 'Memorix',
-              style: Theme.of(context)
-                  .textTheme
-                  .headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.bold),
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
               _hasPin ? 'PIN을 입력하세요' : '$_biometricLabel으로 잠금을 해제하세요',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: Colors.grey),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
             ),
             const SizedBox(height: 40),
 
@@ -160,9 +166,15 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                     height: 16,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: filled ? cs.primary : Colors.grey[300],
+                      color: filled
+                          ? cs.primary
+                          : Theme.of(context).dividerColor,
                       border: Border.all(
-                        color: filled ? cs.primary : Colors.grey[400]!,
+                        color: filled
+                            ? cs.primary
+                            : Theme.of(
+                                context,
+                              ).colorScheme.onSurface.withValues(alpha: 0.4),
                       ),
                     ),
                   );
@@ -237,8 +249,9 @@ class _Keypad extends StatelessWidget {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        backgroundColor:
-                            Theme.of(context).colorScheme.surfaceContainerHighest,
+                        backgroundColor: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHighest,
                       ),
                       onPressed: () => key == '⌫' ? onDelete() : onDigit(key),
                       child: Text(
@@ -284,7 +297,10 @@ class _BiometricButton extends StatelessWidget {
             decoration: BoxDecoration(
               color: cs.primary.withValues(alpha: 0.1),
               shape: BoxShape.circle,
-              border: Border.all(color: cs.primary.withValues(alpha: 0.3), width: 1.5),
+              border: Border.all(
+                color: cs.primary.withValues(alpha: 0.3),
+                width: 1.5,
+              ),
             ),
             child: Icon(icon, size: 32, color: cs.primary),
           ),

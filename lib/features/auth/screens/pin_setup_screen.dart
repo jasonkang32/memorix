@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../../../core/services/auth_service.dart';
 
 /// PIN 최초 설정 화면 (2단계: 입력 → 확인)
@@ -65,8 +65,11 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
         child: Column(
           children: [
             const Spacer(),
-            Icon(Icons.lock_outline,
-                size: 48, color: Theme.of(context).colorScheme.primary),
+            Icon(
+              Icons.lock_outline,
+              size: 48,
+              color: Theme.of(context).colorScheme.primary,
+            ),
             const SizedBox(height: 16),
             Text(
               _isConfirmStep ? 'PIN을 다시 입력하세요' : '새 PIN을 입력하세요 (6자리)',
@@ -87,11 +90,13 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
                     shape: BoxShape.circle,
                     color: filled
                         ? Theme.of(context).colorScheme.primary
-                        : Colors.grey[300],
+                        : Theme.of(context).dividerColor,
                     border: Border.all(
                       color: filled
                           ? Theme.of(context).colorScheme.primary
-                          : Colors.grey[400]!,
+                          : Theme.of(
+                              context,
+                            ).colorScheme.onSurface.withValues(alpha: 0.4),
                     ),
                   ),
                 );
@@ -101,8 +106,10 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
             SizedBox(
               height: 20,
               child: _errorMsg != null
-                  ? Text(_errorMsg!,
-                      style: const TextStyle(color: Colors.red, fontSize: 13))
+                  ? Text(
+                      _errorMsg!,
+                      style: const TextStyle(color: Colors.red, fontSize: 13),
+                    )
                   : null,
             ),
             const Spacer(),
@@ -144,14 +151,17 @@ class _Keypad extends StatelessWidget {
                     child: TextButton(
                       style: TextButton.styleFrom(
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        backgroundColor:
-                            Theme.of(context).colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        backgroundColor: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHighest,
                       ),
-                      onPressed: () =>
-                          key == '⌫' ? onDelete() : onDigit(key),
-                      child: Text(key,
-                          style: Theme.of(context).textTheme.titleLarge),
+                      onPressed: () => key == '⌫' ? onDelete() : onDigit(key),
+                      child: Text(
+                        key,
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
                     ),
                   ),
                 ),

@@ -12,7 +12,12 @@ class AlbumDao {
 
   Future<int> update(Album album) async {
     final db = await _db;
-    return db.update('albums', album.toMap(), where: 'id = ?', whereArgs: [album.id]);
+    return db.update(
+      'albums',
+      album.toMap(),
+      where: 'id = ?',
+      whereArgs: [album.id],
+    );
   }
 
   Future<int> delete(int id) async {

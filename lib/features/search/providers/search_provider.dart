@@ -36,7 +36,10 @@ final searchPersonListProvider = FutureProvider<List<Person>>((ref) async {
 });
 
 /// 태그 목록 (space 기준 필터용)
-final searchTagListProvider = FutureProvider.family<List<Tag>, MediaSpace?>((ref, space) async {
+final searchTagListProvider = FutureProvider.family<List<Tag>, MediaSpace?>((
+  ref,
+  space,
+) async {
   if (space == null) return _tagDao.findAll();
   return _tagDao.findBySpace(space);
 });

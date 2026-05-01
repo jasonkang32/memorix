@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../../../core/db/tag_dao.dart';
 import '../../../shared/models/media_item.dart';
 import '../../../shared/models/tag.dart';
+import '../../../shared/theme/app_theme.dart';
 
 class TagManagementScreen extends StatefulWidget {
   const TagManagementScreen({super.key});
@@ -123,9 +124,18 @@ class _TagList extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.label_outline, size: 48, color: Colors.grey[300]),
+            Icon(
+              Icons.label_outline,
+              size: 48,
+              color: Theme.of(context).dividerColor,
+            ),
             const SizedBox(height: 12),
-            Text('태그가 없습니다', style: TextStyle(color: Colors.grey[500])),
+            Text(
+              '태그가 없습니다',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+            ),
           ],
         ),
       );
@@ -148,7 +158,7 @@ class _TagList extends StatelessWidget {
               fontSize: 11,
               color: tag.isCustom
                   ? Theme.of(context).colorScheme.primary
-                  : Colors.grey[500],
+                  : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
             ),
           ),
           trailing: tag.isCustom
@@ -156,7 +166,13 @@ class _TagList extends StatelessWidget {
                   icon: const Icon(Icons.delete_outline, color: Colors.red),
                   onPressed: () => onDelete(tag),
                 )
-              : const Icon(Icons.lock_outline, size: 16, color: Colors.grey),
+              : Icon(
+                  Icons.lock_outline,
+                  size: 16,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
         );
       },
     );
@@ -166,7 +182,7 @@ class _TagList extends StatelessWidget {
     try {
       return Color(int.parse(hex.replaceFirst('#', '0xFF')));
     } catch (_) {
-      return Colors.grey;
+      return AppColors.mutedTextLight;
     }
   }
 }
@@ -231,7 +247,13 @@ class _AddTagDialogState extends State<_AddTagDialog> {
             ),
           ),
           const SizedBox(height: 16),
-          const Text('아이콘', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          Text(
+            '아이콘',
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
           const SizedBox(height: 6),
           Wrap(
             spacing: 8,
@@ -259,7 +281,13 @@ class _AddTagDialogState extends State<_AddTagDialog> {
                 .toList(),
           ),
           const SizedBox(height: 16),
-          const Text('색상', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          Text(
+            '색상',
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
           const SizedBox(height: 6),
           Wrap(
             spacing: 8,

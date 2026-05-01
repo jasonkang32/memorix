@@ -18,8 +18,10 @@ import 'features/onboarding/screens/onboarding_screen.dart';
 import 'shared/theme/app_theme.dart';
 
 // Flavor: memorix | memorix_work | memorix_personal
-const String appFlavor =
-    String.fromEnvironment('APP_FLAVOR', defaultValue: 'memorix');
+const String appFlavor = String.fromEnvironment(
+  'APP_FLAVOR',
+  defaultValue: 'memorix',
+);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -60,11 +62,7 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  runApp(
-    const ProviderScope(
-      child: MemorixApp(),
-    ),
-  );
+  runApp(const ProviderScope(child: MemorixApp()));
 }
 
 class MemorixApp extends ConsumerStatefulWidget {
@@ -113,17 +111,13 @@ class _MemorixAppState extends ConsumerState<MemorixApp> {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      supportedLocales: const [
-        Locale('ko', 'KR'),
-        Locale('en', 'US'),
-      ],
+      supportedLocales: const [Locale('ko', 'KR'), Locale('en', 'US')],
       builder: (context, child) {
         // 온보딩 체크
         final onboardAsync = ref.watch(onboardingDoneProvider);
         return onboardAsync.when(
-          loading: () => const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          ),
+          loading: () =>
+              const Scaffold(body: Center(child: CircularProgressIndicator())),
           error: (e, st) => child ?? const SizedBox.shrink(),
           data: (done) {
             if (!done) {
@@ -150,9 +144,8 @@ class _MemorixAppState extends ConsumerState<MemorixApp> {
   }
 
   String get _appTitle => switch (appFlavor) {
-        'memorix_work' => 'Memorix Work',
-        'memorix_personal' => 'Memorix Personal',
-        _ => 'Memorix',
-      };
+    'memorix_work' => 'Memorix Work',
+    'memorix_personal' => 'Memorix Personal',
+    _ => 'Memorix',
+  };
 }
-

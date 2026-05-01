@@ -1,4 +1,5 @@
-import 'dart:io';
+﻿import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/db/tag_dao.dart';
@@ -43,9 +44,12 @@ class MediaTimeline extends StatelessWidget {
 
   static final _dateFmt = DateFormat('M월 d일 (E)', 'ko');
 
-  String _dateKey(MediaItem item) =>
-      DateFormat('yyyy-MM-dd').format(
-          DateTime.fromMillisecondsSinceEpoch(item.takenAt));
+  // 섹션 키는 createdAt(등록일) 기반. takenAt(EXIF)이면 옛날 사진을 가져왔을 때
+  // 과거 섹션에 묻혀 사용자가 "추가가 안 됨"으로 인식한다 (Bug #3 회귀 가드).
+  // memorix는 보관함이라 "내가 기록한 시간" 기준이 자연스럽다.
+  String _dateKey(MediaItem item) => DateFormat(
+    'yyyy-MM-dd',
+  ).format(DateTime.fromMillisecondsSinceEpoch(item.createdAt));
 
   @override
   Widget build(BuildContext context) {
@@ -58,31 +62,49 @@ class MediaTimeline extends StatelessWidget {
       sections.putIfAbsent(key, () => []).add(group);
     }
 
-    final sectionKeys = sections.keys.toList()..sort((a, b) => b.compareTo(a));
+    // 섹션 내 그룹을 createdAt 내림차순 정렬 (최신 등록 항목이 상단)
+    for (final key in sections.keys) {
+      sections[key]!.sort(
+        (a, b) => b
+            .map((i) => i.createdAt)
+            .reduce(math.max)
+            .compareTo(a.map((i) => i.createdAt).reduce(math.max)),
+      );
+    }
+
+    // 섹션을 "가장 최근에 Memorix에 등록된" 기준으로 정렬 (EXIF 촬영일 기준 X)
+    final sectionMaxCreatedAt = <String, int>{};
+    for (final entry in sections.entries) {
+      sectionMaxCreatedAt[entry.key] = entry.value
+          .expand((group) => group)
+          .map((item) => item.createdAt)
+          .reduce(math.max);
+    }
+    final sectionKeys = sections.keys.toList()
+      ..sort(
+        (a, b) => (sectionMaxCreatedAt[b] ?? 0).compareTo(
+          sectionMaxCreatedAt[a] ?? 0,
+        ),
+      );
 
     final scrollView = CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
         for (final dateKey in sectionKeys) ...[
           SliverToBoxAdapter(
-            child: _DateHeader(
-              label: _dateFmt.format(DateTime.parse(dateKey)),
-            ),
+            child: _DateHeader(label: _dateFmt.format(DateTime.parse(dateKey))),
           ),
           SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, i) {
-                final group = sections[dateKey]![i];
-                return _TimelineCard(
-                  group: group,
-                  allItems: items,
-                  onTap: onTap,
-                  onLongPress: onLongPress,
-                  showSpaceBadge: showSpaceBadge,
-                );
-              },
-              childCount: sections[dateKey]!.length,
-            ),
+            delegate: SliverChildBuilderDelegate((context, i) {
+              final group = sections[dateKey]![i];
+              return _TimelineCard(
+                group: group,
+                allItems: items,
+                onTap: onTap,
+                onLongPress: onLongPress,
+                showSpaceBadge: showSpaceBadge,
+              );
+            }, childCount: sections[dateKey]!.length),
           ),
         ],
         SliverPadding(
@@ -220,11 +242,18 @@ class _TimelineCardState extends State<_TimelineCard> {
   }
 
   Widget _buildHeader(
-      BuildContext context, MediaItem item, bool isWork, int count) {
-    final time = _dtFmt.format(DateTime.fromMillisecondsSinceEpoch(item.takenAt));
-    final location = [item.countryCode, item.region]
-        .where((s) => s.isNotEmpty)
-        .join('  ');
+    BuildContext context,
+    MediaItem item,
+    bool isWork,
+    int count,
+  ) {
+    final time = _dtFmt.format(
+      DateTime.fromMillisecondsSinceEpoch(item.takenAt),
+    );
+    final location = [
+      item.countryCode,
+      item.region,
+    ].where((s) => s.isNotEmpty).join('  ');
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
@@ -245,24 +274,35 @@ class _TimelineCardState extends State<_TimelineCard> {
               child: Text(
                 isWork ? 'Work' : 'Personal',
                 style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700),
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
             const SizedBox(width: 8),
           ],
-          Text(time,
-              style: const TextStyle(fontSize: 12, color: Color(0xFF555566))),
+          Text(
+            time,
+            style: const TextStyle(fontSize: 12, color: Color(0xFF555566)),
+          ),
           if (location.isNotEmpty) ...[
             const SizedBox(width: 6),
-            const Icon(Icons.location_on_outlined,
-                size: 12, color: Colors.grey),
+            Icon(
+              Icons.location_on_outlined,
+              size: 12,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
             const SizedBox(width: 2),
             Expanded(
               child: Text(
                 location,
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -279,15 +319,19 @@ class _TimelineCardState extends State<_TimelineCard> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.collections_outlined,
-                      size: 10, color: Colors.white),
+                  const Icon(
+                    Icons.collections_outlined,
+                    size: 10,
+                    color: Colors.white,
+                  ),
                   const SizedBox(width: 3),
                   Text(
                     '$count',
                     style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700),
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ],
               ),
@@ -308,7 +352,10 @@ class _TimelineCardState extends State<_TimelineCard> {
       return GestureDetector(
         onTap: () => widget.onTap(widget.group, 0),
         child: SizedBox(
-            height: height, width: double.infinity, child: _MediaImage(item: widget.group[0])),
+          height: height,
+          width: double.infinity,
+          child: _MediaImage(item: widget.group[0]),
+        ),
       );
     }
 
@@ -343,9 +390,7 @@ class _TimelineCardState extends State<_TimelineCard> {
           Expanded(
             child: GestureDetector(
               onTap: () => widget.onTap(widget.group, 0),
-              child: SizedBox.expand(
-                child: _MediaImage(item: widget.group[0]),
-              ),
+              child: SizedBox.expand(child: _MediaImage(item: widget.group[0])),
             ),
           ),
           const SizedBox(width: gap),
@@ -410,10 +455,11 @@ class _TimelineCardState extends State<_TimelineCard> {
                 child: Wrap(
                   spacing: 5,
                   runSpacing: 4,
-                  children: (List.of(tags)
-                        ..sort((a, b) => (b.id ?? 0).compareTo(a.id ?? 0)))
-                      .map((tag) => _TagChipDisplay(label: tag.label))
-                      .toList(),
+                  children:
+                      (List.of(tags)
+                            ..sort((a, b) => (b.id ?? 0).compareTo(a.id ?? 0)))
+                          .map((tag) => _TagChipDisplay(label: tag.label))
+                          .toList(),
                 ),
               ),
             ),
@@ -429,7 +475,9 @@ class _TimelineCardState extends State<_TimelineCard> {
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w500,
-                color: isDark ? Colors.white.withValues(alpha: 0.87) : const Color(0xFF1A2030),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.87)
+                    : const Color(0xFF1A2030),
                 height: 1.5,
               ),
             ),
@@ -442,11 +490,23 @@ class _TimelineCardState extends State<_TimelineCard> {
               _TypeBadge(type: item.mediaType),
               if (item.driveSynced == 0) ...[
                 const SizedBox(width: 10),
-                const Icon(Icons.cloud_upload_outlined,
-                    size: 13, color: Colors.grey),
+                Icon(
+                  Icons.cloud_upload_outlined,
+                  size: 13,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
                 const SizedBox(width: 3),
-                const Text('동기화 대기',
-                    style: TextStyle(fontSize: 12, color: Colors.grey)),
+                Text(
+                  '동기화 대기',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
               ],
             ],
           ),
@@ -454,7 +514,6 @@ class _TimelineCardState extends State<_TimelineCard> {
       ),
     );
   }
-
 }
 
 // ── 미디어 이미지 렌더러 ─────────────────────────────────────
@@ -483,10 +542,15 @@ class _MediaImage extends StatelessWidget {
           if (thumb != null && File(thumb).existsSync())
             Image.file(File(thumb), fit: BoxFit.cover)
           else
-            Container(color: Colors.grey[900]),
+            Container(
+              color: Theme.of(context).colorScheme.surfaceContainerLowest,
+            ),
           const Center(
-            child: Icon(Icons.play_circle_fill,
-                color: Colors.white70, size: 56),
+            child: Icon(
+              Icons.play_circle_fill,
+              color: Colors.white70,
+              size: 56,
+            ),
           ),
         ],
       );
@@ -495,14 +559,24 @@ class _MediaImage extends StatelessWidget {
     // 사진
     final thumb = item.thumbPath;
     if (thumb != null && File(thumb).existsSync()) {
-      return Image.file(File(thumb), fit: BoxFit.cover,
-          width: double.infinity, height: double.infinity);
+      return Image.file(
+        File(thumb),
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+      );
     }
     if (File(item.filePath).existsSync()) {
-      return Image.file(File(item.filePath), fit: BoxFit.cover,
-          width: double.infinity, height: double.infinity);
+      return Image.file(
+        File(item.filePath),
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+      );
     }
-    return Container(color: Colors.grey[200]);
+    return Container(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+    );
   }
 }
 
@@ -546,17 +620,30 @@ class _TypeBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final (icon, label, color) = switch (type) {
       MediaType.photo => (Icons.photo_outlined, '사진', const Color(0xFF1A73E8)),
-      MediaType.video => (Icons.videocam_outlined, '영상', const Color(0xFFFF6B9D)),
-      MediaType.document => (Icons.description_outlined, '문서', const Color(0xFFFFB800)),
+      MediaType.video => (
+        Icons.videocam_outlined,
+        '영상',
+        const Color(0xFFFF6B9D),
+      ),
+      MediaType.document => (
+        Icons.description_outlined,
+        '문서',
+        const Color(0xFFFFB800),
+      ),
     };
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 13, color: color),
         const SizedBox(width: 3),
-        Text(label,
-            style: TextStyle(
-                fontSize: 11, color: color, fontWeight: FontWeight.w600)),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: color,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ],
     );
   }

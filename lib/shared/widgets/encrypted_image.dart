@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -73,13 +73,19 @@ class _EncryptedImageState extends State<EncryptedImage> {
     if (_error != null) {
       return widget.errorBuilder?.call(context, _error!) ??
           Container(
-            color: Colors.grey[300],
-            child: const Center(
-              child: Icon(Icons.lock_outline, color: Colors.grey, size: 28),
+            color: Theme.of(context).dividerColor,
+            child: Center(
+              child: Icon(
+                Icons.lock_outline,
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                size: 28,
+              ),
             ),
           );
     }
     return widget.placeholderBuilder?.call(context) ??
-        Container(color: Colors.grey[200]);
+        Container(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        );
   }
 }

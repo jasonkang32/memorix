@@ -43,9 +43,9 @@ void main() {
       expect(map['space'], 'work');
     });
 
-    test('personal space serializes correctly', () {
+    test('legacy personal space serializes as secret', () {
       final personal = base.copyWith(space: MediaSpace.personal);
-      expect(personal.toMap()['space'], 'personal');
+      expect(personal.toMap()['space'], 'secret');
     });
   });
 }

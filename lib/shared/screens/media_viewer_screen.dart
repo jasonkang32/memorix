@@ -82,8 +82,9 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
       await SecretVaultService.deleteVaultFile(item.thumbPath);
     } else {
       await StorageService.deleteFile(item.filePath);
-      if (item.thumbPath != null)
+      if (item.thumbPath != null) {
         await StorageService.deleteFile(item.thumbPath!);
+      }
     }
     if (item.id != null) await _mediaDao.delete(item.id!);
 

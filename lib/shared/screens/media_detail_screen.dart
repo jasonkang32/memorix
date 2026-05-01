@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:exif/exif.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -373,9 +373,13 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
               ),
               TextButton(
                 onPressed: () => Navigator.pop(ctx, 'discard'),
-                child: const Text(
+                child: Text(
                   '저장 안 함',
-                  style: TextStyle(color: Colors.grey),
+                  style: TextStyle(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
                 ),
               ),
               FilledButton(
@@ -613,8 +617,13 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
           label: const Text('미디어 추가'),
           style: OutlinedButton.styleFrom(
             minimumSize: const Size(double.infinity, 52),
-            foregroundColor: Colors.grey,
-            side: BorderSide(color: Colors.grey.shade300, width: 1),
+            foregroundColor: Theme.of(
+              context,
+            ).colorScheme.onSurface.withValues(alpha: 0.6),
+            side: BorderSide(
+              color: Theme.of(context).dividerColor,
+              width: 1,
+            ),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
@@ -668,19 +677,30 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
       return Container(
         height: 120,
         decoration: BoxDecoration(
-          color: Colors.grey[100],
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[300]!),
+          border: Border.all(color: Theme.of(context).dividerColor),
         ),
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.description, size: 48, color: Colors.grey),
+              Icon(
+                Icons.description,
+                size: 48,
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
               const SizedBox(height: 8),
               Text(
                 cur.filePath.split('/').last,
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
               ),
             ],
           ),
@@ -689,7 +709,11 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
     }
 
     // 사진 / 영상
-    final path = cur.thumbPath ?? cur.filePath;
+    // 사진은 filePath(원본)를 우선해야 화질 보존. 비디오는 mp4라 Image.file에
+    // 못 띄우므로 thumbPath 사용 (Bug #1 회귀 가드).
+    final path = cur.mediaType == MediaType.video
+        ? (cur.thumbPath ?? cur.filePath)
+        : cur.filePath;
     if (File(path).existsSync()) {
       return GestureDetector(
         onTap: () async {
@@ -773,7 +797,7 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
     return Container(
       height: 240,
       decoration: BoxDecoration(
-        color: Colors.grey[200],
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
       ),
     );
@@ -972,9 +996,10 @@ class _MediaMeta extends StatelessWidget {
       spacing: 12,
       runSpacing: 4,
       children: [
-        _metaItem(Icons.folder_outlined, sizeLabel),
+        _metaItem(context, Icons.folder_outlined, sizeLabel),
         if (item.countryCode.isNotEmpty || item.region.isNotEmpty)
           _metaItem(
+            context,
             Icons.location_on_outlined,
             [
               item.countryCode,
@@ -985,13 +1010,23 @@ class _MediaMeta extends StatelessWidget {
     );
   }
 
-  Widget _metaItem(IconData icon, String text) {
+  Widget _metaItem(BuildContext context, IconData icon, String text) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 13, color: Colors.grey),
+        Icon(
+          icon,
+          size: 13,
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+        ),
         const SizedBox(width: 4),
-        Text(text, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        Text(
+          text,
+          style: TextStyle(
+            fontSize: 12,
+            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+          ),
+        ),
       ],
     );
   }
@@ -1141,15 +1176,19 @@ class _OcrSection extends StatelessWidget {
                 Icon(
                   Icons.text_snippet_outlined,
                   size: 32,
-                  color: Colors.grey.withValues(alpha: 0.5),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.3),
                 ),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   '인식된 텍스트가 없습니다\n"텍스트 인식" 버튼을 눌러 실행하세요',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 13,
-                    color: Colors.grey,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.6),
                     height: 1.5,
                   ),
                 ),

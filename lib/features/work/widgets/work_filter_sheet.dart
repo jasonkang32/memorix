@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/work_provider.dart';
 import '../../../core/db/media_dao.dart';
@@ -23,25 +23,25 @@ final _countryListProvider = FutureProvider<List<String>>((ref) async {
   // DB에서 실제로 사용된 국가 코드만 가져오기
   final dao = MediaDao();
   final items = await dao.findWork();
-  final codes = items
-      .map((i) => i.countryCode)
-      .where((c) => c.isNotEmpty)
-      .toSet()
-      .toList()
-    ..sort();
+  final codes =
+      items
+          .map((i) => i.countryCode)
+          .where((c) => c.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort();
   return codes;
 });
 
-final _regionListProvider =
-    FutureProvider.family<List<String>, String>((ref, countryCode) async {
+final _regionListProvider = FutureProvider.family<List<String>, String>((
+  ref,
+  countryCode,
+) async {
   final dao = MediaDao();
   final items = await dao.findWork(countryCode: countryCode);
-  final regions = items
-      .map((i) => i.region)
-      .where((r) => r.isNotEmpty)
-      .toSet()
-      .toList()
-    ..sort();
+  final regions =
+      items.map((i) => i.region).where((r) => r.isNotEmpty).toSet().toList()
+        ..sort();
   return regions;
 });
 
@@ -97,7 +97,7 @@ class _WorkFilterSheetState extends ConsumerState<WorkFilterSheet> {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.grey[300],
+              color: Theme.of(context).dividerColor,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -106,8 +106,10 @@ class _WorkFilterSheetState extends ConsumerState<WorkFilterSheet> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('필터',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text(
+                  '필터',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
                 Row(
                   children: [
                     TextButton(onPressed: _reset, child: const Text('초기화')),
@@ -128,11 +130,18 @@ class _WorkFilterSheetState extends ConsumerState<WorkFilterSheet> {
                 Text('국가', style: Theme.of(context).textTheme.titleSmall),
                 const SizedBox(height: 8),
                 countriesAsync.when(
-                  loading: () => const Center(child: CircularProgressIndicator()),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
                   error: (e, _) => Text('오류: $e'),
                   data: (countries) => countries.isEmpty
-                      ? const Text('등록된 국가 없음',
-                          style: TextStyle(color: Colors.grey))
+                      ? Text(
+                          '등록된 국가 없음',
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        )
                       : Wrap(
                           spacing: 8,
                           runSpacing: 4,
@@ -145,15 +154,16 @@ class _WorkFilterSheetState extends ConsumerState<WorkFilterSheet> {
                                 _selectedRegion = null;
                               }),
                             ),
-                            ...countries.map((code) => ChoiceChip(
-                                  label: Text(
-                                      _countryNames[code] ?? code),
-                                  selected: _selectedCountry == code,
-                                  onSelected: (_) => setState(() {
-                                    _selectedCountry = code;
-                                    _selectedRegion = null;
-                                  }),
-                                )),
+                            ...countries.map(
+                              (code) => ChoiceChip(
+                                label: Text(_countryNames[code] ?? code),
+                                selected: _selectedCountry == code,
+                                onSelected: (_) => setState(() {
+                                  _selectedCountry = code;
+                                  _selectedRegion = null;
+                                }),
+                              ),
+                            ),
                           ],
                         ),
                 ),
@@ -167,8 +177,14 @@ class _WorkFilterSheetState extends ConsumerState<WorkFilterSheet> {
                         const Center(child: CircularProgressIndicator()),
                     error: (e, _) => Text('오류: $e'),
                     data: (regions) => regions.isEmpty
-                        ? const Text('등록된 지역 없음',
-                            style: TextStyle(color: Colors.grey))
+                        ? Text(
+                            '등록된 지역 없음',
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurface.withValues(alpha: 0.6),
+                            ),
+                          )
                         : Wrap(
                             spacing: 8,
                             runSpacing: 4,
@@ -179,12 +195,14 @@ class _WorkFilterSheetState extends ConsumerState<WorkFilterSheet> {
                                 onSelected: (_) =>
                                     setState(() => _selectedRegion = null),
                               ),
-                              ...regions.map((r) => ChoiceChip(
-                                    label: Text(r),
-                                    selected: _selectedRegion == r,
-                                    onSelected: (_) =>
-                                        setState(() => _selectedRegion = r),
-                                  )),
+                              ...regions.map(
+                                (r) => ChoiceChip(
+                                  label: Text(r),
+                                  selected: _selectedRegion == r,
+                                  onSelected: (_) =>
+                                      setState(() => _selectedRegion = r),
+                                ),
+                              ),
                             ],
                           ),
                   ),
@@ -213,36 +231,41 @@ class _MediaTypeFilter extends ConsumerWidget {
         ChoiceChip(
           label: const Text('전체'),
           selected: filter.mediaType == null,
-          onSelected: (_) => ref.read(workFilterProvider.notifier).state =
-              WorkFilter(
-                  countryCode: filter.countryCode, region: filter.region),
+          onSelected: (_) =>
+              ref.read(workFilterProvider.notifier).state = WorkFilter(
+                countryCode: filter.countryCode,
+                region: filter.region,
+              ),
         ),
         ChoiceChip(
           label: const Text('📷 사진'),
           selected: filter.mediaType == 'photo',
-          onSelected: (_) => ref.read(workFilterProvider.notifier).state =
-              WorkFilter(
-                  countryCode: filter.countryCode,
-                  region: filter.region,
-                  mediaType: 'photo'),
+          onSelected: (_) =>
+              ref.read(workFilterProvider.notifier).state = WorkFilter(
+                countryCode: filter.countryCode,
+                region: filter.region,
+                mediaType: 'photo',
+              ),
         ),
         ChoiceChip(
           label: const Text('🎬 영상'),
           selected: filter.mediaType == 'video',
-          onSelected: (_) => ref.read(workFilterProvider.notifier).state =
-              WorkFilter(
-                  countryCode: filter.countryCode,
-                  region: filter.region,
-                  mediaType: 'video'),
+          onSelected: (_) =>
+              ref.read(workFilterProvider.notifier).state = WorkFilter(
+                countryCode: filter.countryCode,
+                region: filter.region,
+                mediaType: 'video',
+              ),
         ),
         ChoiceChip(
           label: const Text('📄 문서'),
           selected: filter.mediaType == 'document',
-          onSelected: (_) => ref.read(workFilterProvider.notifier).state =
-              WorkFilter(
-                  countryCode: filter.countryCode,
-                  region: filter.region,
-                  mediaType: 'document'),
+          onSelected: (_) =>
+              ref.read(workFilterProvider.notifier).state = WorkFilter(
+                countryCode: filter.countryCode,
+                region: filter.region,
+                mediaType: 'document',
+              ),
         ),
       ],
     );

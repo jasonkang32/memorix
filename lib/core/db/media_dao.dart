@@ -267,10 +267,21 @@ class MediaDao {
     return (r.first['s'] as int?) ?? 0;
   }
 
-  Future<List<MediaItem>> findRecent({int limit = 10}) async {
+  /// 최근 등록 미디어. space 필수 — 호출처가 명시적으로 어느 공간을 보일지
+  /// 결정해야 한다. 공간 분리 원칙(secret 보관함은 공용 화면에 노출 금지)을
+  /// 강제하기 위해 default 값 없음.
+  ///
+  /// Bug #2 회귀 가드: 이전 버전은 where 절이 없어 secret도 반환했다.
+  Future<List<MediaItem>> findRecent({
+    required String space,
+    int limit = 10,
+  }) async {
     final db = await _db;
+    final (where, args) = _spaceClause(space);
     final rows = await db.query(
       'media',
+      where: where,
+      whereArgs: args.isEmpty ? null : args,
       orderBy: 'created_at DESC',
       limit: limit,
     );
