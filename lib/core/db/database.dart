@@ -14,7 +14,7 @@ class AppDatabase {
     final path = join(dbPath, 'memorix.db');
     return openDatabase(
       path,
-      version: 6,
+      version: 7,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -25,6 +25,7 @@ class AppDatabase {
       CREATE TABLE media (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         space         TEXT NOT NULL DEFAULT 'work',
+        is_locked     INTEGER NOT NULL DEFAULT 0,
         media_type    TEXT NOT NULL,
         file_path     TEXT NOT NULL,
         thumb_path    TEXT,
@@ -198,6 +199,27 @@ class AppDatabase {
         'ALTER TABLE media ADD COLUMN encrypted INTEGER NOT NULL DEFAULT 0',
       );
     }
+    if (oldVersion < 7) {
+      // v7: Secret 공간 제거 → 항목별 잠금 모델로 전환.
+      //
+      // - 기존 'secret' (+ 잔여 legacy 'personal') row 모두 'personal'로 통합
+      // - 잠금 의도 보존을 위해 is_locked=1 일괄 적용 (보안 우선)
+      // - 옛 personal(잠금 안 쓴 사용자) row도 일괄 잠김. 사용자가 detail에서 풀 수 있음.
+      // - tags 테이블도 같이 변환.
+      await db.execute(
+        'ALTER TABLE media ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0',
+      );
+      await db.update(
+        'media',
+        {'space': 'personal', 'is_locked': 1},
+        where: "space IN ('secret', 'personal')",
+      );
+      await db.update(
+        'tags',
+        {'space': 'personal'},
+        where: "space IN ('secret', 'personal')",
+      );
+    }
   }
 
   static Future<void> _insertDefaultTags(Database db) async {
@@ -209,7 +231,7 @@ class AppDatabase {
       ('fault', '불량/결함', '#FF6B6B', 'warning'),
       ('site', '현장', '#FFEAA7', 'location_on'),
     ];
-    final secretTags = [
+    final personalTags = [
       ('travel', '여행', '#74B9FF', 'flight'),
       ('food', '음식', '#FD79A8', 'restaurant'),
       ('family', '가족', '#FDCB6E', 'family_restroom'),
@@ -225,9 +247,9 @@ class AppDatabase {
         'icon': t.$4,
       });
     }
-    for (final t in secretTags) {
+    for (final t in personalTags) {
       await db.insert('tags', {
-        'space': 'secret',
+        'space': 'personal',
         'key': t.$1,
         'label': t.$2,
         'color': t.$3,

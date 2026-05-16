@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/auth/providers/lock_provider.dart';
+import '../../features/auth/providers/lock_session_provider.dart';
 import '../../features/auth/providers/secret_lock_provider.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/secret_vault_service.dart';
@@ -20,6 +21,8 @@ class AppLifecycleObserver extends WidgetsBindingObserver {
         _backgroundAt = DateTime.now();
         // 백그라운드 진입 즉시 평문 임시 파일 정리
         SecretVaultService.purgeTempDecrypted();
+        // per-item lock 세션 즉시 만료
+        ref.read(lockSessionProvider).invalidate();
       case AppLifecycleState.resumed:
         _checkLock();
       default:

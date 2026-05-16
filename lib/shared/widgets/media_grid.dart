@@ -9,6 +9,7 @@ class MediaGrid extends StatelessWidget {
   final void Function(List<MediaItem> items, int index) onTap;
   final void Function(MediaItem item) onLongPress;
   final EdgeInsets padding;
+  final Future<void> Function()? onRefresh;
 
   const MediaGrid({
     super.key,
@@ -16,13 +17,15 @@ class MediaGrid extends StatelessWidget {
     required this.onTap,
     required this.onLongPress,
     this.padding = const EdgeInsets.fromLTRB(0, 0, 0, 80),
+    this.onRefresh,
   });
 
   @override
   Widget build(BuildContext context) {
     final groups = DateGrouper.group(items);
 
-    return CustomScrollView(
+    final scrollView = CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
         for (final group in groups) ...[
           SliverToBoxAdapter(
@@ -56,6 +59,15 @@ class MediaGrid extends StatelessWidget {
         SliverPadding(padding: EdgeInsets.only(bottom: padding.bottom)),
       ],
     );
+
+    if (onRefresh != null) {
+      return RefreshIndicator(
+        onRefresh: onRefresh!,
+        color: const Color(0xFF00C896),
+        child: scrollView,
+      );
+    }
+    return scrollView;
   }
 }
 

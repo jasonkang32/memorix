@@ -1,5 +1,6 @@
-﻿import 'dart:io';
+import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/db/tag_dao.dart';
@@ -17,6 +18,11 @@ class MediaTimeline extends StatelessWidget {
   final Future<void> Function()? onRefresh;
   final bool showSpaceBadge;
 
+  /// 카드 헤더의 자물쇠 버튼 콜백 (Phase 3C — per-card 잠금 토글).
+  /// 호출처는 인증 + DB 갱신 + provider invalidate를 책임진다
+  /// (`handleLockToggle` 사용 권장).
+  final Future<void> Function(MediaItem item)? onLockToggle;
+
   const MediaTimeline({
     super.key,
     required this.items,
@@ -25,20 +31,44 @@ class MediaTimeline extends StatelessWidget {
     this.padding = const EdgeInsets.fromLTRB(0, 0, 0, 80),
     this.onRefresh,
     this.showSpaceBadge = false,
+    this.onLockToggle,
   });
 
-  // 연속된 같은 batch_id 항목을 하나의 카드 그룹으로 묶음
+  // 같은 batch_id 항목을 하나의 카드 그룹으로 묶음.
+  //
+  // 이전 구현은 "인접 같은 batchId만" 그룹화 — DB created_at DESC 정렬에서
+  // 같은 batchId의 row 사이에 다른 batchId의 row가 끼면 두 그룹으로 분리되어
+  // 같은 work가 두 카드로 나뉘는 버그가 있었다 (QA Round 5).
+  //
+  // 이제는 전체 src를 한 번 훑어 같은 batchId면 무조건 한 그룹.
+  // 그룹 위치는 그 batchId의 첫 등장 순서 (= 가장 최근 createdAt 위치).
+  // 그룹 내 정렬은 createdAt ASC — 오래된 사진 먼저, 새로 추가한 사진이 마지막.
+  // 사용자 의도("최하단에 하나씩 붙임")와 일치.
   List<List<MediaItem>> _groupByBatch(List<MediaItem> src) {
     final groups = <List<MediaItem>>[];
+    final byBatch = <String, List<MediaItem>>{};
+
     for (final item in src) {
-      if (item.batchId.isNotEmpty &&
-          groups.isNotEmpty &&
-          groups.last.first.batchId == item.batchId) {
-        groups.last.add(item);
-      } else {
+      if (item.batchId.isEmpty) {
+        // 빈 batchId는 각자 독립 그룹.
         groups.add([item]);
+      } else {
+        final existing = byBatch[item.batchId];
+        if (existing != null) {
+          existing.add(item);
+        } else {
+          final group = <MediaItem>[item];
+          byBatch[item.batchId] = group;
+          groups.add(group);
+        }
       }
     }
+
+    // 각 그룹 내부를 createdAt ASC로 정렬 (오래된 → 최신).
+    for (final group in groups) {
+      group.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    }
+
     return groups;
   }
 
@@ -103,6 +133,7 @@ class MediaTimeline extends StatelessWidget {
                 onTap: onTap,
                 onLongPress: onLongPress,
                 showSpaceBadge: showSpaceBadge,
+                onLockToggle: onLockToggle,
               );
             }, childCount: sections[dateKey]!.length),
           ),
@@ -158,6 +189,7 @@ class _TimelineCard extends StatefulWidget {
   final void Function(List<MediaItem> group, int indexInGroup) onTap;
   final void Function(MediaItem) onLongPress;
   final bool showSpaceBadge;
+  final Future<void> Function(MediaItem item)? onLockToggle;
 
   const _TimelineCard({
     required this.group,
@@ -165,6 +197,7 @@ class _TimelineCard extends StatefulWidget {
     required this.onTap,
     required this.onLongPress,
     this.showSpaceBadge = false,
+    this.onLockToggle,
   });
 
   @override
@@ -247,6 +280,7 @@ class _TimelineCardState extends State<_TimelineCard> {
     bool isWork,
     int count,
   ) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final time = _dtFmt.format(
       DateTime.fromMillisecondsSinceEpoch(item.takenAt),
     );
@@ -254,9 +288,10 @@ class _TimelineCardState extends State<_TimelineCard> {
       item.countryCode,
       item.region,
     ].where((s) => s.isNotEmpty).join('  ');
+    final isLocked = item.isLocked == 1;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
       child: Row(
         children: [
           // Space badge (검색 등 혼합 목록에서만 표시)
@@ -291,7 +326,9 @@ class _TimelineCardState extends State<_TimelineCard> {
             Icon(
               Icons.location_on_outlined,
               size: 12,
-              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.6),
             ),
             const SizedBox(width: 2),
             Expanded(
@@ -336,6 +373,28 @@ class _TimelineCardState extends State<_TimelineCard> {
                 ],
               ),
             ),
+          // 동기화 상태 아이콘 (그룹 단위 — 자물쇠 토글 왼쪽)
+          ..._buildSyncStatusIcon(context),
+          // 자물쇠 토글 버튼 (Phase 3C — per-card 잠금)
+          if (widget.onLockToggle != null) ...[
+            const SizedBox(width: 4),
+            IconButton(
+              iconSize: 20,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              visualDensity: VisualDensity.compact,
+              icon: Icon(
+                isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
+                color: isLocked
+                    ? Colors.amber
+                    : (isDark ? Colors.white60 : Colors.black54),
+              ),
+              tooltip: isLocked ? '잠금 해제' : '잠금',
+              onPressed: () async {
+                await widget.onLockToggle?.call(item);
+              },
+            ),
+          ],
         ],
       ),
     );
@@ -437,6 +496,49 @@ class _TimelineCardState extends State<_TimelineCard> {
     );
   }
 
+  /// 그룹 단위 동기화 상태 아이콘 — 헤더의 자물쇠 토글 왼쪽에 배치.
+  /// - 일부라도 미동기화: cloud_upload_outlined (warning 색)
+  /// - 전부 동기화 완료: cloud_done_outlined (mutedText)
+  /// - 그 외 (예: 빈 그룹): 표시 없음
+  List<Widget> _buildSyncStatusIcon(BuildContext context) {
+    final allSynced = widget.group.every((m) => m.driveSynced == 1);
+    final hasPending = widget.group.any((m) => m.driveSynced == 0);
+
+    if (hasPending) {
+      return [
+        const Padding(
+          padding: EdgeInsets.only(left: 4, right: 0),
+          child: Tooltip(
+            message: '동기화 대기',
+            child: Icon(
+              Icons.cloud_upload_outlined,
+              size: 18,
+              color: Color(0xFFFFB800),
+            ),
+          ),
+        ),
+      ];
+    }
+    if (allSynced) {
+      return [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, right: 0),
+          child: Tooltip(
+            message: '동기화 완료',
+            child: Icon(
+              Icons.cloud_done_outlined,
+              size: 18,
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.5),
+            ),
+          ),
+        ),
+      ];
+    }
+    return const [];
+  }
+
   Widget _buildFooter(BuildContext context, MediaItem item, bool isDark) {
     final tags = _tags ?? [];
     final note = item.note.trim();
@@ -481,35 +583,6 @@ class _TimelineCardState extends State<_TimelineCard> {
                 height: 1.5,
               ),
             ),
-
-          const SizedBox(height: 8),
-
-          // ── 타입 배지 + 동기화 상태 ──
-          Row(
-            children: [
-              _TypeBadge(type: item.mediaType),
-              if (item.driveSynced == 0) ...[
-                const SizedBox(width: 10),
-                Icon(
-                  Icons.cloud_upload_outlined,
-                  size: 13,
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.onSurface.withValues(alpha: 0.6),
-                ),
-                const SizedBox(width: 3),
-                Text(
-                  '동기화 대기',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
-                ),
-              ],
-            ],
-          ),
         ],
       ),
     );
@@ -522,60 +595,107 @@ class _MediaImage extends StatelessWidget {
   final MediaItem item;
   const _MediaImage({required this.item});
 
+  // 타임라인 카드 이미지(폭 ~화면 절반~전체) 디코딩 캐시 폭. retina 대응 ~2배.
+  static const int _gridDecodeSize = 600;
+
   @override
   Widget build(BuildContext context) {
     if (item.mediaType == MediaType.document) {
-      return Container(
-        color: Colors.blue[50],
-        child: const Center(
-          child: Icon(Icons.description, size: 56, color: Colors.blueGrey),
+      return _wrapLock(
+        Container(
+          color: Colors.blue[50],
+          child: const Center(
+            child: Icon(Icons.description, size: 56, color: Colors.blueGrey),
+          ),
         ),
       );
     }
 
-    // 영상: 썸네일 + play 오버레이
+    // 영상: 썸네일 + play 오버레이 (mp4는 Image.file에 못 씀)
     if (item.mediaType == MediaType.video) {
       final thumb = item.thumbPath;
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          if (thumb != null && File(thumb).existsSync())
-            Image.file(File(thumb), fit: BoxFit.cover)
-          else
-            Container(
-              color: Theme.of(context).colorScheme.surfaceContainerLowest,
+      return _wrapLock(
+        Stack(
+          fit: StackFit.expand,
+          children: [
+            if (thumb != null && File(thumb).existsSync())
+              Image.file(
+                File(thumb),
+                fit: BoxFit.cover,
+                cacheWidth: _gridDecodeSize,
+                cacheHeight: _gridDecodeSize,
+                filterQuality: FilterQuality.medium,
+              )
+            else
+              Container(
+                color: Theme.of(context).colorScheme.surfaceContainerLowest,
+              ),
+            const Center(
+              child: Icon(
+                Icons.play_circle_fill,
+                color: Colors.white70,
+                size: 56,
+              ),
             ),
-          const Center(
-            child: Icon(
-              Icons.play_circle_fill,
-              color: Colors.white70,
-              size: 56,
-            ),
-          ),
-        ],
+          ],
+        ),
       );
     }
 
-    // 사진
+    // 사진: 원본 filePath + cacheWidth 다운샘플 (Bug #1 회귀 방지).
+    // 압축된 thumbPath를 stretch하면 화질이 저하되므로 원본을 디코더 단계에서
+    // 다운샘플한다. 메모리 효율 + 화질 보존.
+    if (File(item.filePath).existsSync()) {
+      return _wrapLock(
+        Image.file(
+          File(item.filePath),
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          cacheWidth: _gridDecodeSize,
+          cacheHeight: _gridDecodeSize,
+          filterQuality: FilterQuality.medium,
+        ),
+      );
+    }
+    // 원본이 없을 때만 thumbPath fallback.
     final thumb = item.thumbPath;
     if (thumb != null && File(thumb).existsSync()) {
-      return Image.file(
-        File(thumb),
-        fit: BoxFit.cover,
-        width: double.infinity,
-        height: double.infinity,
+      return _wrapLock(
+        Image.file(
+          File(thumb),
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          cacheWidth: _gridDecodeSize,
+          cacheHeight: _gridDecodeSize,
+          filterQuality: FilterQuality.medium,
+        ),
       );
     }
-    if (File(item.filePath).existsSync()) {
-      return Image.file(
-        File(item.filePath),
-        fit: BoxFit.cover,
-        width: double.infinity,
-        height: double.infinity,
-      );
-    }
-    return Container(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+    return _wrapLock(
+      Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
+    );
+  }
+
+  /// 잠긴 항목(`isLocked == 1`)은 그리드/타임라인에서 블러 + 자물쇠로 가려진다.
+  /// 인증 후 풀스크린(`media_viewer_screen`)에서만 선명하게 표시되어야 한다.
+  Widget _wrapLock(Widget child) {
+    if (item.isLocked != 1) return child;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        child,
+        ClipRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: Container(color: Colors.black.withValues(alpha: 0.25)),
+          ),
+        ),
+        const Center(
+          child: Icon(Icons.lock_rounded, size: 36, color: Colors.white),
+        ),
+      ],
     );
   }
 }
@@ -606,45 +726,6 @@ class _TagChipDisplay extends StatelessWidget {
           fontWeight: FontWeight.w700,
         ),
       ),
-    );
-  }
-}
-
-// ── 미디어 타입 배지 ─────────────────────────────────────────
-
-class _TypeBadge extends StatelessWidget {
-  final MediaType type;
-  const _TypeBadge({required this.type});
-
-  @override
-  Widget build(BuildContext context) {
-    final (icon, label, color) = switch (type) {
-      MediaType.photo => (Icons.photo_outlined, '사진', const Color(0xFF1A73E8)),
-      MediaType.video => (
-        Icons.videocam_outlined,
-        '영상',
-        const Color(0xFFFF6B9D),
-      ),
-      MediaType.document => (
-        Icons.description_outlined,
-        '문서',
-        const Color(0xFFFFB800),
-      ),
-    };
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 13, color: color),
-        const SizedBox(width: 3),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            color: color,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
     );
   }
 }

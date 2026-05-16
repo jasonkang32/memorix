@@ -165,6 +165,63 @@ class SecretVaultService {
     return file;
   }
 
+  /// .enc 파일을 복호화해서 평문 보관함에 새 파일로 복원.
+  ///
+  /// per-item lock 토글의 unlock 분기에서 사용. 기존 평문 흐름(StorageService
+  /// 와 동일한 디렉터리 규칙)을 따라 `[docs]/memorix/{photos|videos|documents}
+  /// /{year}/{month}/{uuid}{ext}` 경로로 새 파일을 생성한다.
+  ///
+  /// 확장자/카테고리 결정: `.jpg.enc` -> photos/.jpg, `.mp4.enc` -> videos/.mp4,
+  /// 그 외(`.pdf.enc` 등) -> documents 하위. 썸네일(`*_thumb.jpg.enc`)도 일반
+  /// 사진과 동일하게 photos 하위에 보관 -- `_thumb` 접미사 유지.
+  ///
+  /// 반환: 새 평문 파일의 절대 경로. 호출자는 이후 .enc 파일을 별도로 삭제할
+  /// 책임이 있다 (atomic을 위해 본 메서드는 .enc를 건드리지 않는다).
+  static Future<String> decryptToFile(String encPath) async {
+    final bytes = await decryptToBytes(encPath);
+
+    // .enc 제거 후 원래 확장자 추출 (예: 'a.jpg.enc' → '.jpg').
+    final base = p.basenameWithoutExtension(encPath); // 'a.jpg'
+    final innerExt = p.extension(base); // '.jpg' / '.mp4' / '.pdf' / ''
+    final ext = innerExt.isEmpty ? '.bin' : innerExt;
+    final isThumb = base.endsWith('_thumb$innerExt');
+
+    final category = _categoryForExt(ext);
+    final now = DateTime.now();
+    final base0 = await getApplicationDocumentsDirectory();
+    final dir = Directory(
+      p.join(
+        base0.path,
+        'memorix',
+        category,
+        now.year.toString(),
+        now.month.toString().padLeft(2, '0'),
+      ),
+    );
+    if (!await dir.exists()) await dir.create(recursive: true);
+
+    final id = _uuid.v4();
+    final fileName = isThumb ? '${id}_thumb$ext' : '$id$ext';
+    final destPath = p.join(dir.path, fileName);
+    await File(destPath).writeAsBytes(bytes, flush: true);
+    return destPath;
+  }
+
+  static String _categoryForExt(String ext) {
+    final e = ext.toLowerCase();
+    if (e == '.jpg' ||
+        e == '.jpeg' ||
+        e == '.png' ||
+        e == '.webp' ||
+        e == '.heic') {
+      return 'photos';
+    }
+    if (e == '.mp4' || e == '.mov' || e == '.m4v' || e == '.webm') {
+      return 'videos';
+    }
+    return 'documents';
+  }
+
   /// 임시 복호화 디렉터리 비우기 (앱 잠금/백그라운드 진입 시 호출).
   static Future<void> purgeTempDecrypted() async {
     try {

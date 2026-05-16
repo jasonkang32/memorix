@@ -9,14 +9,15 @@ import '../../../core/db/media_dao.dart';
 import '../../../core/services/media_capture_service.dart';
 import '../../../core/services/original_media_cleanup_service.dart';
 import '../../../core/services/media_save_service.dart';
-import '../../../features/auth/providers/secret_lock_provider.dart';
 import '../../../features/home/providers/home_provider.dart';
 import '../../../shared/models/album.dart';
 import '../../../shared/models/media_item.dart';
 import '../../../shared/widgets/capture_bottom_sheet.dart';
+import '../../../shared/widgets/media_long_press_menu.dart';
 import '../../../shared/widgets/media_timeline.dart';
 import '../../../shared/screens/media_detail_screen.dart';
 import '../../../shared/screens/media_viewer_screen.dart';
+import '../../../features/auth/services/lock_toggle_helper.dart';
 import 'album_detail_screen.dart';
 import '../../../shared/theme/app_theme.dart';
 
@@ -48,20 +49,17 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
       setState(() => _searchResults = null);
       return;
     }
-    final results = await _dao.quickSearch(q, 'secret');
+    final results = await _dao.quickSearch(q, 'personal');
     setState(() => _searchResults = results);
   }
 
   @override
   Widget build(BuildContext context) {
-    final lockState = ref.watch(secretLockProvider);
-
-    if (lockState == SecretLockState.locked) {
-      return _SecretLockGate(
-        onUnlock: () => ref.read(secretLockProvider.notifier).tryUnlock(),
-      );
-    }
-
+    // 옛 공간 단위 잠금(secretLockProvider)은 제거됨.
+    // 새 per-item lock 시스템(LockSessionManager + 그리드 블러 + 풀스크린 게이트)이
+    // 항목 단위로 인증을 처리한다. Personal 탭 진입에 별도 인증 불필요.
+    // 사용자 보고: 탭 전환 시 비동기 자동 unlock 호출이 다른 탭 위에 다이얼로그를
+    // 띄워서 "Home에서 인증 요구"로 인식되던 문제 해결.
     final albumAsync = ref.watch(albumListProvider);
 
     return Scaffold(
@@ -117,9 +115,24 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
                                 onTap: (group, idx) =>
                                     _openDetail(context, group, idx),
                                 onLongPress: (item) =>
-                                    _openViewer(context, [item], 0),
+                                    MediaLongPressMenu.show(
+                                      context: context,
+                                      ref: ref,
+                                      item: item,
+                                      onOpenViewer: () =>
+                                          _openViewer(context, [item], 0),
+                                      onAfterToggle: () => ref.invalidate(
+                                        secretMediaProvider,
+                                      ),
+                                    ),
                                 onRefresh: () async =>
                                     ref.invalidate(secretMediaProvider),
+                                onLockToggle: (item) async {
+                                  await handleLockToggle(context, ref, item);
+                                  if (context.mounted) {
+                                    ref.invalidate(secretMediaProvider);
+                                  }
+                                },
                               ),
                       );
                     },
@@ -148,7 +161,7 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
                 Icon(Icons.lock_rounded, color: Colors.white, size: 14),
                 SizedBox(width: 4),
                 Text(
-                  'Secret',
+                  'Personal',
                   style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w800,
@@ -245,7 +258,23 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
     return MediaTimeline(
       items: results,
       onTap: (group, idx) => _openDetail(context, group, idx),
-      onLongPress: (item) => _openViewer(context, [item], 0),
+      onLongPress: (item) => MediaLongPressMenu.show(
+        context: context,
+        ref: ref,
+        item: item,
+        onOpenViewer: () => _openViewer(context, [item], 0),
+        onAfterToggle: () {
+          ref.invalidate(secretMediaProvider);
+          if (_query.isNotEmpty) _runSearch(_query);
+        },
+      ),
+      onLockToggle: (item) async {
+        await handleLockToggle(context, ref, item);
+        if (context.mounted) {
+          ref.invalidate(secretMediaProvider);
+          if (_query.isNotEmpty) _runSearch(_query);
+        }
+      },
     );
   }
 
@@ -259,12 +288,12 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
   }
 
   Future<void> _onAddMedia(BuildContext context, WidgetRef ref) async {
-    List<CapturedMedia>? capturedList = await CaptureBottomSheet.show(
+    final captureResult = await CaptureBottomSheet.show(
       context,
-      space: MediaSpace.secret,
+      space: MediaSpace.personal,
     );
 
-    if (capturedList == null || capturedList.isEmpty) {
+    if (captureResult == null || captureResult.items.isEmpty) {
       if (mounted) setState(() => _isImporting = false);
       return;
     }
@@ -272,6 +301,9 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
       if (mounted) setState(() => _isImporting = false);
       return;
     }
+
+    final capturedList = captureResult.items;
+    final deleteOriginal = captureResult.deleteOriginal;
 
     final total = capturedList.length;
     final progressNotifier = ValueNotifier<int>(0);
@@ -340,7 +372,7 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
 
       final results = await MediaSaveService.saveAll(
         captured: capturedList,
-        space: MediaSpace.secret,
+        space: MediaSpace.personal,
         onProgress: (done, _) => progressNotifier.value = done,
         onEnhancementComplete: () {
           if (context.mounted) {
@@ -382,19 +414,28 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
           ),
         );
       }
+      // 사용자가 capture sheet에서 "원본 삭제" toggle을 ON으로 했으면
+      // 별도 confirm 없이 자동 삭제 (Bug #3 — 다이얼로그 제거).
+      if (deleteOriginal && capturedList.isNotEmpty) {
+        await _runOriginalCleanup(context, capturedList);
+      }
+
+      if (!context.mounted) return;
+
       final savedItems = results.map((r) => r.item).toList();
-      final detailChanged = await Navigator.push<dynamic>(
+      await Navigator.push<dynamic>(
         context,
         MaterialPageRoute(
-          builder: (_) => MediaDetailScreen(items: savedItems, initialIndex: 0),
+          builder: (_) => MediaDetailScreen(
+            items: savedItems,
+            initialIndex: 0,
+            isNewlyAdded: true,
+          ),
         ),
       );
       if (context.mounted) {
         ref.invalidate(secretMediaProvider);
         ref.invalidate(homeSummaryProvider);
-      }
-      if (context.mounted && detailChanged != null) {
-        await _offerDeleteOriginals(context, capturedList);
       }
     } catch (e) {
       closeProgressDialog();
@@ -409,36 +450,13 @@ class _PersonalScreenState extends ConsumerState<PersonalScreen> {
     }
   }
 
-  Future<void> _offerDeleteOriginals(
+  /// CaptureBottomSheet의 "원본 삭제" toggle이 ON일 때 호출.
+  /// 다이얼로그 confirm 없이 즉시 실행하고 결과만 SnackBar로 알림.
+  Future<void> _runOriginalCleanup(
     BuildContext context,
     List<CapturedMedia> capturedList,
   ) async {
-    if (capturedList.isEmpty) return;
-
-    final shouldDelete = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('원본 사진을 정리할까요?'),
-        content: const Text(
-          '선택한 파일은 메모릭스 보관함에 복사되었습니다. '
-          '갤러리에 원본을 그대로 두면 같은 사진이 두 곳에 남습니다.\n\n'
-          '메모릭스에만 보관하려면 원본 삭제를 권장합니다.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('그대로 두기'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            icon: const Icon(Icons.delete_outline),
-            label: const Text('원본 삭제'),
-          ),
-        ],
-      ),
-    );
-
-    if (shouldDelete != true || !context.mounted) return;
+    if (capturedList.isEmpty || !context.mounted) return;
 
     final result = await OriginalMediaCleanupService.deleteOriginals(
       capturedList,
@@ -784,78 +802,6 @@ class _EmptySecretView extends StatelessWidget {
                 ).colorScheme.onSurface.withValues(alpha: 0.4),
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SecretLockGate extends StatefulWidget {
-  final Future<bool> Function() onUnlock;
-  const _SecretLockGate({required this.onUnlock});
-
-  @override
-  State<_SecretLockGate> createState() => _SecretLockGateState();
-}
-
-class _SecretLockGateState extends State<_SecretLockGate> {
-  bool _unlocking = false;
-  bool _autoTried = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // 진입 즉시 자동으로 1회 인증 시도 — 사용자가 버튼을 다시 누르지 않도록
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_autoTried && mounted) {
-        _autoTried = true;
-        _tryUnlock();
-      }
-    });
-  }
-
-  Future<void> _tryUnlock() async {
-    if (_unlocking) return;
-    setState(() => _unlocking = true);
-    await widget.onUnlock();
-    if (mounted) setState(() => _unlocking = false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('🔒 Secret 보관함')),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.lock_outlined,
-              size: 64,
-              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Secret 보관함이 잠겨 있어요',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '생체인증 또는 기기 비밀번호로 잠금 해제',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 32),
-            _unlocking
-                ? const CircularProgressIndicator()
-                : FilledButton.icon(
-                    onPressed: _tryUnlock,
-                    icon: const Icon(Icons.fingerprint),
-                    label: const Text('잠금 해제'),
-                  ),
           ],
         ),
       ),

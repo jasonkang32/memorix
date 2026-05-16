@@ -43,9 +43,16 @@ void main() {
       expect(map['space'], 'work');
     });
 
-    test('legacy personal space serializes as secret', () {
+    test('personal space serializes as personal (v7+)', () {
       final personal = base.copyWith(space: MediaSpace.personal);
-      expect(personal.toMap()['space'], 'secret');
+      expect(personal.toMap()['space'], 'personal');
+    });
+
+    test('legacy secret string parses to personal (v7+)', () {
+      // v7 마이그레이션 후에도 fromMap이 옛 'secret' 문자열을 만나면
+      // personal로 흡수해야 한다 (방어 코드).
+      expect(MediaSpaceX.parse('secret'), MediaSpace.personal);
+      expect(MediaSpaceX.parse('personal'), MediaSpace.personal);
     });
   });
 }

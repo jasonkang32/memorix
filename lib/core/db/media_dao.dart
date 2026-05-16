@@ -32,13 +32,19 @@ class MediaDao {
     return MediaItem.fromMap(rows.first);
   }
 
-  /// Work Space 목록 (국가·지역 필터)
+  /// Work Space 목록 (국가·지역 필터).
+  ///
+  /// [includeLocked] = true (default): 그리드/필터 등 일반 화면에서 사용.
+  /// 잠긴 항목도 포함되어 위젯 단계에서 블러 처리된다.
+  /// PDF 보고서 등 외부 노출 흐름에서는 false로 명시 — 잠긴 항목은
+  /// 자동 제외된다 (spec 8b).
   Future<List<MediaItem>> findWork({
     String? countryCode,
     String? region,
     String? mediaType,
     int limit = 50,
     int offset = 0,
+    bool includeLocked = true,
   }) async {
     final db = await _db;
     final where = <String>["space = 'work'"];
@@ -55,6 +61,9 @@ class MediaDao {
       where.add('media_type = ?');
       args.add(mediaType);
     }
+    if (!includeLocked) {
+      where.add('is_locked = 0');
+    }
     final rows = await db.query(
       'media',
       where: where.join(' AND '),
@@ -66,7 +75,8 @@ class MediaDao {
     return rows.map(MediaItem.fromMap).toList();
   }
 
-  /// Secret Space 목록 (앨범 필터). 구버전 호환을 위해 'personal'도 포함.
+  /// Personal Space 목록 (앨범 필터).
+  /// v7 마이그레이션 후 모든 legacy 'secret' row는 'personal'로 통합됨.
   Future<List<MediaItem>> findSecret({
     int? albumId,
     String? mediaType,
@@ -74,7 +84,7 @@ class MediaDao {
     int offset = 0,
   }) async {
     final db = await _db;
-    final where = <String>["space IN ('secret','personal')"];
+    final where = <String>["space = 'personal'"];
     final args = <dynamic>[];
     if (albumId != null) {
       where.add('album_id = ?');
@@ -125,12 +135,7 @@ class MediaDao {
     final args = <dynamic>[query];
 
     if (space != null) {
-      // secret 검색 시에는 legacy 'personal' row도 포함
-      if (space == MediaSpace.secret) {
-        conditions.add("m.space IN ('secret','personal')");
-      } else {
-        conditions.add("m.space = '${space.dbValue}'");
-      }
+      conditions.add("m.space = '${space.dbValue}'");
     }
     if (countryCode != null) {
       conditions.add("m.country_code = ?");
@@ -166,10 +171,16 @@ class MediaDao {
     return rows.map(MediaItem.fromMap).toList();
   }
 
-  /// 드라이브 미동기화 목록
+  /// 드라이브 미동기화 목록.
+  ///
+  /// 잠긴 항목(`is_locked = 1`)은 외부 클라우드 노출을 막기 위해 자동 제외
+  /// (spec 8a). 잠금 해제 후 다시 큐에 들어온다.
   Future<List<MediaItem>> findPendingSync() async {
     final db = await _db;
-    final rows = await db.query('media', where: 'drive_synced = 0');
+    final rows = await db.query(
+      'media',
+      where: 'drive_synced = 0 AND is_locked = 0',
+    );
     return rows.map(MediaItem.fromMap).toList();
   }
 
@@ -205,12 +216,9 @@ class MediaDao {
 
   // ── 통계 쿼리 ──────────────────────────────────────────────
 
-  /// space가 'secret'/'work' 같은 단일 값일 수도 있고, secret 영역 통합을 위해
-  /// legacy 'personal'까지 함께 묶어야 할 수도 있다. 이 헬퍼가 SQL 단편을 만든다.
+  /// space는 'work' 또는 'personal'. v7 이후 legacy 'secret' row는 모두
+  /// 'personal'로 통합되었으므로 단순 동등 비교로 충분하다.
   static (String, List<dynamic>) _spaceClause(String space) {
-    if (space == 'secret') {
-      return ("space IN ('secret','personal')", const []);
-    }
     return ('space = ?', [space]);
   }
 
@@ -325,24 +333,38 @@ class MediaDao {
     return rows.toList();
   }
 
-  /// 키워드로 Work/Secret 내 빠른 검색 — note·태그·지역·국가 포함
+  /// 가장 최근에 등록된 미디어의 country_code를 반환.
+  ///
+  /// 빈 country_code(`''`)는 무시한다. space 필수 — Work/Personal 분리 원칙.
+  /// 새 미디어 등록 시 country picker의 default 값 fallback으로 사용
+  /// (폰 locale에 country code가 없을 때).
+  Future<String?> findMostRecentCountryCode({required String space}) async {
+    final db = await _db;
+    final rows = await db.query(
+      'media',
+      columns: ['country_code'],
+      where: "space = ? AND country_code != ''",
+      whereArgs: [space],
+      orderBy: 'created_at DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['country_code'] as String?;
+  }
+
+  /// 키워드로 Work/Personal 내 빠른 검색 — note·태그·지역·국가 포함
   Future<List<MediaItem>> quickSearch(String query, String space) async {
     final db = await _db;
     if (query.trim().isEmpty) {
       return space == 'work' ? findWork(limit: 200) : findSecret(limit: 200);
     }
     final q = '%$query%';
-    // legacy 'personal' row도 secret 검색에 포함
-    final spaceClause = space == 'work'
-        ? 'm.space = ?'
-        : "m.space IN ('secret','personal') AND ? = ?";
-    final spaceArgs = space == 'work' ? [space] : [space, space];
     final rows = await db.rawQuery(
       '''
       SELECT DISTINCT m.* FROM media m
       LEFT JOIN media_tags mt ON m.id = mt.media_id
       LEFT JOIN tags t ON mt.tag_id = t.id
-      WHERE $spaceClause
+      WHERE m.space = ?
         AND (
           m.title LIKE ? OR
           m.note LIKE ? OR
@@ -354,7 +376,7 @@ class MediaDao {
       ORDER BY m.taken_at DESC
       LIMIT 100
     ''',
-      [...spaceArgs, q, q, q, q, q, q],
+      [space, q, q, q, q, q, q],
     );
     return rows.map(MediaItem.fromMap).toList();
   }

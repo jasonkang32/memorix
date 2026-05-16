@@ -60,9 +60,9 @@ final homeSummaryProvider = FutureProvider<HomeSummary>((ref) async {
 
   final results = await Future.wait([
     dao.countGroupsBySpace('work'),
-    dao.countGroupsBySpace('secret'),
+    dao.countGroupsBySpace('personal'),
     dao.countByTypeForSpace('work'),
-    dao.countByTypeForSpace('secret'),
+    dao.countByTypeForSpace('personal'),
     albumDao.findAll(),
     peopleDao.findAll(),
     dao.countDistinctCountries(),

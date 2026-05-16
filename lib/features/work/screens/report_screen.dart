@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
@@ -6,6 +6,11 @@ import '../../../core/db/media_dao.dart';
 import '../../../core/services/report_service.dart';
 import '../../../shared/models/media_item.dart';
 
+/// 보고서 생성 화면 — 4단계 Wizard.
+/// Step 1: 사진 검색 (키워드/필터로 후보 좁히기)
+/// Step 2: 사진 추가 (검색 결과에서 multi-select)
+/// Step 3: 보고서 작성 (제목·부제 등 메타 입력)
+/// Step 4: 생성 (미리보기 후 PDF 생성)
 class ReportScreen extends ConsumerStatefulWidget {
   final ReportType reportType;
   final String? countryCode;
@@ -23,11 +28,25 @@ class ReportScreen extends ConsumerStatefulWidget {
 }
 
 class _ReportScreenState extends ConsumerState<ReportScreen> {
+  // 진행 단계 (0-based: 0..3 → 4 steps)
+  int _currentStep = 0;
+
+  // ── Step 1: 검색 ─────────────────────────────────────────
+  final _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+  List<MediaItem> _baseItems = []; // findWork()로 받은 전체 (잠금 제외)
+  List<MediaItem> _searchResults = [];
+  bool _loadingBase = true;
+  bool _hasSearched = false;
+
+  // ── Step 2: 선택 ─────────────────────────────────────────
+  final Set<int> _selectedIds = <int>{};
+
+  // ── Step 3: 폼 ─────────────────────────────────────────
   final _titleCtrl = TextEditingController();
   final _subtitleCtrl = TextEditingController();
-  List<MediaItem> _selectedItems = [];
-  List<MediaItem> _allItems = [];
-  bool _loading = true;
+
+  // ── Step 4: 생성 ─────────────────────────────────────────
   bool _generating = false;
 
   final _dao = MediaDao();
@@ -35,157 +54,533 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
   @override
   void initState() {
     super.initState();
-    _loadItems();
+    _loadBase();
   }
 
   @override
   void dispose() {
+    _searchCtrl.dispose();
     _titleCtrl.dispose();
     _subtitleCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _loadItems() async {
+  // ── 데이터 로드 ─────────────────────────────────────────
+
+  Future<void> _loadBase() async {
+    // PDF 보고서는 외부 공유 가능성이 있으므로 잠긴 항목은 자동 제외 (spec 8b).
     final items = await _dao.findWork(
       countryCode: widget.countryCode,
       region: widget.region,
+      includeLocked: false,
+      limit: 500,
     );
+    if (!mounted) return;
     setState(() {
-      _allItems = items;
-      _selectedItems = List.from(items);
-      _loading = false;
+      _baseItems = items;
+      _searchResults = items; // 초기에는 전체가 후보
+      _loadingBase = false;
     });
   }
 
+  void _runSearch(String q) {
+    final query = q.trim().toLowerCase();
+    setState(() {
+      _searchQuery = q;
+      _hasSearched = true;
+      if (query.isEmpty) {
+        _searchResults = List.from(_baseItems);
+        return;
+      }
+      _searchResults = _baseItems.where((m) {
+        final hay = [
+          m.title,
+          m.note,
+          m.countryCode,
+          m.region,
+          m.ocrText,
+        ].join(' ').toLowerCase();
+        return hay.contains(query);
+      }).toList();
+    });
+  }
+
+  // ── Step 진행 가드 ─────────────────────────────────────────
+
+  bool get _canAdvanceFromSearch {
+    // 검색을 했거나(빈 쿼리로 "전체 보기" 포함) 결과가 있으면 진행 가능
+    return _searchResults.isNotEmpty || _hasSearched;
+  }
+
+  bool get _canAdvanceFromSelect => _selectedIds.isNotEmpty;
+
+  bool get _canAdvanceFromForm => _titleCtrl.text.trim().isNotEmpty;
+
+  void _goNext() {
+    final ok = switch (_currentStep) {
+      0 => _canAdvanceFromSearch,
+      1 => _canAdvanceFromSelect,
+      2 => _canAdvanceFromForm,
+      _ => false,
+    };
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_blockedMessage(_currentStep))),
+      );
+      return;
+    }
+    if (_currentStep < 3) {
+      setState(() => _currentStep += 1);
+    }
+  }
+
+  void _goPrev() {
+    if (_currentStep > 0) {
+      setState(() => _currentStep -= 1);
+    }
+  }
+
+  String _blockedMessage(int step) {
+    return switch (step) {
+      0 => '먼저 검색하거나 결과를 확인하세요',
+      1 => '사진을 1장 이상 선택하세요',
+      2 => '보고서 제목을 입력하세요',
+      _ => '',
+    };
+  }
+
+  // ── 생성 ─────────────────────────────────────────
+
   Future<void> _generate() async {
-    if (_selectedItems.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('미디어를 1개 이상 선택하세요')));
+    final selected = _baseItems.where((m) => _selectedIds.contains(m.id)).toList();
+    if (selected.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('미디어를 1개 이상 선택하세요')),
+      );
       return;
     }
 
     setState(() => _generating = true);
 
     try {
+      final title = _titleCtrl.text.trim().isEmpty ? '보고서' : _titleCtrl.text.trim();
       final pdfPath = await ReportService.generate(
         type: widget.reportType,
-        items: _selectedItems,
-        title: _titleCtrl.text.trim().isEmpty ? '보고서' : _titleCtrl.text.trim(),
+        items: selected,
+        title: title,
         subtitle: _subtitleCtrl.text.trim(),
       );
 
       if (!mounted) return;
 
-      // printing 패키지로 미리보기
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (ctx) => _PdfPreviewScreen(
-            pdfPath: pdfPath,
-            title: _titleCtrl.text.trim().isEmpty
-                ? '보고서'
-                : _titleCtrl.text.trim(),
-          ),
+          builder: (_) => _PdfPreviewScreen(pdfPath: pdfPath, title: title),
         ),
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('PDF 생성 오류: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('PDF 생성 오류: $e')),
+        );
       }
     } finally {
       if (mounted) setState(() => _generating = false);
     }
   }
 
+  // ── UI ─────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_reportTitle),
-        actions: [
-          if (_generating)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            )
-          else
-            TextButton.icon(
-              icon: const Icon(Icons.picture_as_pdf),
-              label: const Text('생성'),
-              onPressed: _generate,
-            ),
-        ],
-      ),
-      body: _loading
+      appBar: AppBar(title: Text(_reportTitle)),
+      body: _loadingBase
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                // 보고서 제목
-                TextField(
-                  controller: _titleCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '보고서 제목',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.title),
+          : Stepper(
+              type: StepperType.horizontal,
+              currentStep: _currentStep,
+              onStepContinue: _currentStep == 3 ? null : _goNext,
+              onStepCancel: _currentStep == 0 ? null : _goPrev,
+              onStepTapped: (i) {
+                // 뒤로 점프는 자유, 앞으로 점프는 가드 통과해야
+                if (i <= _currentStep) {
+                  setState(() => _currentStep = i);
+                  return;
+                }
+                // 앞으로 한 칸씩 이동하며 가드 검증
+                while (_currentStep < i) {
+                  final ok = switch (_currentStep) {
+                    0 => _canAdvanceFromSearch,
+                    1 => _canAdvanceFromSelect,
+                    2 => _canAdvanceFromForm,
+                    _ => false,
+                  };
+                  if (!ok) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(_blockedMessage(_currentStep))),
+                    );
+                    return;
+                  }
+                  setState(() => _currentStep += 1);
+                }
+              },
+              controlsBuilder: (ctx, details) {
+                return Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Row(
+                    children: [
+                      if (_currentStep < 3)
+                        FilledButton(
+                          onPressed: details.onStepContinue,
+                          child: const Text('다음'),
+                        )
+                      else
+                        FilledButton.icon(
+                          icon: _generating
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.picture_as_pdf),
+                          label: Text(_generating ? '생성 중...' : '생성'),
+                          onPressed: _generating ? null : _generate,
+                        ),
+                      const SizedBox(width: 8),
+                      if (_currentStep > 0)
+                        TextButton(
+                          onPressed: details.onStepCancel,
+                          child: const Text('이전'),
+                        ),
+                    ],
                   ),
+                );
+              },
+              steps: [
+                Step(
+                  title: const Text('사진 검색'),
+                  isActive: _currentStep >= 0,
+                  state: _currentStep > 0 ? StepState.complete : StepState.indexed,
+                  content: _buildSearchStep(),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _subtitleCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '부제목 (선택)',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.subtitles_outlined),
+                Step(
+                  title: const Text('사진 추가'),
+                  isActive: _currentStep >= 1,
+                  state: _currentStep > 1 ? StepState.complete : StepState.indexed,
+                  content: _buildSelectStep(),
+                ),
+                Step(
+                  title: const Text('보고서 작성'),
+                  isActive: _currentStep >= 2,
+                  state: _currentStep > 2 ? StepState.complete : StepState.indexed,
+                  content: _buildFormStep(),
+                ),
+                Step(
+                  title: const Text('생성'),
+                  isActive: _currentStep >= 3,
+                  state: StepState.indexed,
+                  content: _buildGenerateStep(),
+                ),
+              ],
+            ),
+    );
+  }
+
+  // ── Step 1: 검색 ─────────────────────────────────────────
+  Widget _buildSearchStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _searchCtrl,
+          decoration: InputDecoration(
+            hintText: '제목·메모·지역·태그 검색',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: _searchQuery.isEmpty
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.clear),
+                    onPressed: () {
+                      _searchCtrl.clear();
+                      _runSearch('');
+                    },
                   ),
-                ),
-                const SizedBox(height: 20),
-                // 미디어 선택
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            border: const OutlineInputBorder(),
+          ),
+          onChanged: _runSearch,
+          onSubmitted: _runSearch,
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            _hasSearched
+                ? '검색 결과: ${_searchResults.length}개'
+                : '전체 후보: ${_baseItems.length}개 (검색하거나 다음으로 진행)',
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+        ),
+        const SizedBox(height: 8),
+        if (_searchResults.isEmpty && _hasSearched)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Text(
+              '검색 결과가 없습니다',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey),
+            ),
+          )
+        else
+          SizedBox(
+            height: 220,
+            child: GridView.builder(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4,
+                mainAxisSpacing: 4,
+                crossAxisSpacing: 4,
+              ),
+              itemCount: _searchResults.length,
+              itemBuilder: (_, i) {
+                final m = _searchResults[i];
+                return ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: _Thumb(item: m),
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ── Step 2: 선택 (multi-select) ─────────────────────────────────────────
+  Widget _buildSelectStep() {
+    final candidates = _searchResults;
+    if (candidates.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Text(
+          '선택할 사진이 없습니다. 이전 단계로 돌아가 검색을 조정하세요.',
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              '선택: ${_selectedIds.length} / ${candidates.length}',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            TextButton(
+              onPressed: () => setState(() {
+                final allIds = candidates
+                    .map((m) => m.id)
+                    .whereType<int>()
+                    .toSet();
+                final allSelected = allIds.every(_selectedIds.contains);
+                if (allSelected) {
+                  _selectedIds.removeAll(allIds);
+                } else {
+                  _selectedIds.addAll(allIds);
+                }
+              }),
+              child: Text(
+                candidates.every((m) => _selectedIds.contains(m.id))
+                    ? '전체 해제'
+                    : '전체 선택',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 320,
+          child: GridView.builder(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              mainAxisSpacing: 6,
+              crossAxisSpacing: 6,
+            ),
+            itemCount: candidates.length,
+            itemBuilder: (_, i) {
+              final m = candidates[i];
+              final selected = _selectedIds.contains(m.id);
+              return GestureDetector(
+                onTap: () => setState(() {
+                  if (selected) {
+                    _selectedIds.remove(m.id);
+                  } else if (m.id != null) {
+                    _selectedIds.add(m.id!);
+                  }
+                }),
+                child: Stack(
+                  fit: StackFit.expand,
                   children: [
-                    Text(
-                      '포함할 미디어 (${_selectedItems.length}/${_allItems.length})',
-                      style: Theme.of(context).textTheme.titleSmall,
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: _Thumb(item: m),
                     ),
-                    TextButton(
-                      onPressed: () => setState(() {
-                        _selectedItems =
-                            _selectedItems.length == _allItems.length
-                            ? []
-                            : List.from(_allItems);
-                      }),
-                      child: Text(
-                        _selectedItems.length == _allItems.length
-                            ? '전체 해제'
-                            : '전체 선택',
+                    if (selected)
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.35),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.blue, width: 3),
+                        ),
+                      ),
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: selected ? Colors.blue : Colors.black54,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: selected
+                            ? const Icon(
+                                Icons.check,
+                                size: 16,
+                                color: Colors.white,
+                              )
+                            : null,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                ..._allItems.map(
-                  (item) => _MediaSelectTile(
-                    item: item,
-                    selected: _selectedItems.contains(item),
-                    onToggle: (selected) => setState(() {
-                      if (selected) {
-                        _selectedItems.add(item);
-                      } else {
-                        _selectedItems.remove(item);
-                      }
-                    }),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Step 3: 폼 ─────────────────────────────────────────
+  Widget _buildFormStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _titleCtrl,
+          decoration: const InputDecoration(
+            labelText: '보고서 제목 *',
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.title),
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _subtitleCtrl,
+          decoration: const InputDecoration(
+            labelText: '부제목 (선택)',
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.subtitles_outlined),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.grey.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.info_outline, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '보고서 종류: $_reportTitle\n포함 사진: ${_selectedIds.length}장',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Step 4: 생성 미리보기 ─────────────────────────────────────────
+  Widget _buildGenerateStep() {
+    final selected = _baseItems.where((m) => _selectedIds.contains(m.id)).toList();
+    final title = _titleCtrl.text.trim().isEmpty ? '(제목 없음)' : _titleCtrl.text.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
                   ),
+                ),
+                if (_subtitleCtrl.text.trim().isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    _subtitleCtrl.text.trim(),
+                    style: const TextStyle(fontSize: 13, color: Colors.grey),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(Icons.photo_library_outlined, size: 16),
+                    const SizedBox(width: 4),
+                    Text('${selected.length}장 포함'),
+                    const SizedBox(width: 16),
+                    const Icon(Icons.description_outlined, size: 16),
+                    const SizedBox(width: 4),
+                    Text(_reportTitle),
+                  ],
                 ),
               ],
             ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 120,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: selected.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 6),
+            itemBuilder: (_, i) {
+              return SizedBox(
+                width: 100,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: _Thumb(item: selected[i]),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          '아래 [생성] 버튼을 눌러 PDF를 만듭니다.',
+          style: TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+      ],
     );
   }
 
@@ -197,44 +592,14 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
   };
 }
 
-class _MediaSelectTile extends StatelessWidget {
-  final MediaItem item;
-  final bool selected;
-  final ValueChanged<bool> onToggle;
+// ── 썸네일 위젯 ─────────────────────────────────────────
 
-  const _MediaSelectTile({
-    required this.item,
-    required this.selected,
-    required this.onToggle,
-  });
+class _Thumb extends StatelessWidget {
+  final MediaItem item;
+  const _Thumb({required this.item});
 
   @override
   Widget build(BuildContext context) {
-    return CheckboxListTile(
-      value: selected,
-      onChanged: (v) => onToggle(v ?? false),
-      secondary: ClipRRect(
-        borderRadius: BorderRadius.circular(6),
-        child: SizedBox(width: 48, height: 48, child: _buildThumb(context)),
-      ),
-      title: Text(
-        item.title.isEmpty ? '(제목 없음)' : item.title,
-        style: const TextStyle(fontSize: 14),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Text(
-        [
-          if (item.countryCode.isNotEmpty) item.countryCode,
-          if (item.region.isNotEmpty) item.region,
-          item.mediaType.name,
-        ].join(' · '),
-        style: const TextStyle(fontSize: 11),
-      ),
-    );
-  }
-
-  Widget _buildThumb(BuildContext context) {
     if (item.mediaType == MediaType.document) {
       return Container(
         color: Colors.blue[50],
@@ -257,6 +622,8 @@ class _MediaSelectTile extends StatelessWidget {
     );
   }
 }
+
+// ── PDF 미리보기 ─────────────────────────────────────────
 
 class _PdfPreviewScreen extends StatelessWidget {
   final String pdfPath;

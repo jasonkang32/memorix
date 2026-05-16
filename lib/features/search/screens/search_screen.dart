@@ -68,8 +68,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           ),
           // ── 태그 필터 ──
           _TagFilterBar(space: spaceFilter),
-          // ── Secret 전용 필터 (앨범 + 인물) ──
-          if (spaceFilter == MediaSpace.secret) _PersonalFilterBar(),
+          // ── Personal 전용 필터 (앨범 + 인물) ──
+          if (spaceFilter == MediaSpace.personal) _PersonalFilterBar(),
           // ── 결과 ──
           Expanded(
             child: query.isEmpty
@@ -114,7 +114,7 @@ class _SpaceFilterBar extends StatelessWidget {
           const SizedBox(width: 8),
           _chip(context, MediaSpace.work, '💼 Work'),
           const SizedBox(width: 8),
-          _chip(context, MediaSpace.secret, '🔒 Secret'),
+          _chip(context, MediaSpace.personal, '🔒 Personal'),
         ],
       ),
     );

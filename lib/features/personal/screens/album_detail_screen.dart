@@ -40,14 +40,18 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
   }
 
   Future<void> _onAddMedia() async {
-    final capturedList = await CaptureBottomSheet.show(
+    final captureResult = await CaptureBottomSheet.show(
       context,
-      space: MediaSpace.secret,
+      space: MediaSpace.personal,
     );
-    if (capturedList == null || capturedList.isEmpty || !mounted) return;
+    if (captureResult == null ||
+        captureResult.items.isEmpty ||
+        !mounted) {
+      return;
+    }
     await MediaSaveService.saveAll(
-      captured: capturedList,
-      space: MediaSpace.secret,
+      captured: captureResult.items,
+      space: MediaSpace.personal,
       albumId: widget.album.id,
     );
     _loadItems();

@@ -289,7 +289,7 @@ class MediaCaptureService {
       sourcePath,
     ).timeout(const Duration(seconds: 5), onTimeout: () => (null, null, null));
 
-    if (space == MediaSpace.secret) {
+    if (space == MediaSpace.personal) {
       final saved = await SecretVaultService.savePhoto(
         sourcePath,
       ).timeout(const Duration(seconds: 25));
@@ -334,7 +334,7 @@ class MediaCaptureService {
     required bool deleteSource,
     required MediaSpace space,
   }) async {
-    if (space == MediaSpace.secret) {
+    if (space == MediaSpace.personal) {
       // 1. 원본 영상을 암호화 보관함에 저장
       final destPath = await SecretVaultService.saveVideo(sourcePath);
 
@@ -403,7 +403,7 @@ class MediaCaptureService {
     required bool deleteSource,
     required MediaSpace space,
   }) async {
-    if (space == MediaSpace.secret) {
+    if (space == MediaSpace.personal) {
       final destPath = await SecretVaultService.saveDocument(sourcePath);
       if (deleteSource) {
         try {

@@ -36,7 +36,7 @@ class _TagManagementScreenState extends State<TagManagementScreen>
     if (!mounted) return;
     setState(() {
       _workTags = all.where((t) => t.space == MediaSpace.work).toList();
-      _secretTags = all.where((t) => t.space == MediaSpace.secret).toList();
+      _secretTags = all.where((t) => t.space == MediaSpace.personal).toList();
     });
   }
 
@@ -91,13 +91,13 @@ class _TagManagementScreenState extends State<TagManagementScreen>
           controller: _tabCtrl,
           tabs: const [
             Tab(text: '💼 Work'),
-            Tab(text: '🔒 Secret'),
+            Tab(text: '🔒 Personal'),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton.small(
         onPressed: () =>
-            _addTag(_tabCtrl.index == 0 ? MediaSpace.work : MediaSpace.secret),
+            _addTag(_tabCtrl.index == 0 ? MediaSpace.work : MediaSpace.personal),
         tooltip: '태그 추가',
         child: const Icon(Icons.add),
       ),

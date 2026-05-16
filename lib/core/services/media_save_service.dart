@@ -87,8 +87,10 @@ class MediaSaveService {
     MediaSpace space,
   ) async {
     if (captured.mediaType == 'photo' || captured.mediaType == 'document') {
+      // OcrService 내부 timeout이 30초이므로 호출부는 35초로 마진 확보.
+      // 이전엔 외부 15초가 OCR 30초보다 짧아 OCR 자체 timeout이 의미 없었다.
       final ocrText = await OcrService.extractText(captured.filePath)
-          .timeout(const Duration(seconds: 15), onTimeout: () => '');
+          .timeout(const Duration(seconds: 35), onTimeout: () => '');
       if (ocrText.isNotEmpty) {
         await _mediaDao.updateOcrText(mediaId, ocrText);
       }
@@ -108,8 +110,12 @@ class MediaSaveService {
     int? jobId,
     void Function(int done, int total)? onProgress,
     void Function()? onEnhancementComplete,
+    String? overrideBatchId,
   }) async {
-    final batchId = captured.length > 1 ? _uuid.v4() : '';
+    // overrideBatchId가 있으면 인계 (detail 안에서 "기존 work에 추가" 흐름).
+    // 없으면 다중 항목일 때만 새 batch uuid 생성, 단일은 빈 문자열.
+    final batchId =
+        overrideBatchId ?? (captured.length > 1 ? _uuid.v4() : '');
     final results = <MediaSaveResult>[];
 
     // (mediaId, capturedMedia) 쌍 — Phase 2에서 사용
@@ -145,11 +151,13 @@ class MediaSaveService {
             .then((_) async {
               for (final (id, cap) in phase2Items) {
                 try {
+                  // _enhance 내부: OCR 35초 + AI 태그 ~5초. 마진 포함 50초.
+                  // 이전 20초는 OCR 30초도 못 끝냈다.
                   await _enhance(
                     id,
                     cap,
                     space,
-                  ).timeout(const Duration(seconds: 20));
+                  ).timeout(const Duration(seconds: 50));
                 } catch (e, st) {
                   developer.log(
                     'MediaSaveService: Phase 2 실패 id=$id: $e',

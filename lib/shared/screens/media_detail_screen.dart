@@ -1,13 +1,16 @@
 ﻿import 'dart:io';
+import 'package:country_picker/country_picker.dart';
 import 'package:exif/exif.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 import 'package:flutter/services.dart';
 import '../../core/db/media_dao.dart';
 import '../../core/db/tag_dao.dart';
 import '../../core/db/people_dao.dart';
+import '../../core/services/country_default_service.dart';
 import '../../core/services/ocr_service.dart';
 import '../../core/services/storage_service.dart';
 import '../models/media_item.dart';
@@ -16,16 +19,27 @@ import '../models/person.dart';
 import '../widgets/capture_bottom_sheet.dart';
 import '../widgets/people_chips.dart';
 import '../../core/services/media_save_service.dart';
+import '../../features/auth/providers/lock_session_provider.dart';
+import '../../features/auth/services/lock_auth_service.dart';
+import '../../features/auth/services/lock_toggle_helper.dart';
+import '../../features/personal/providers/personal_provider.dart';
+import '../../features/work/providers/work_provider.dart';
 import 'media_viewer_screen.dart';
 
 class MediaDetailScreen extends ConsumerStatefulWidget {
   final List<MediaItem> items;
   final int initialIndex;
 
+  /// 신규 미디어 추가 직후 진입 여부.
+  /// - true  : "추가" 흐름 — 하단 액션 바에서 [미디어 삭제] 버튼을 숨기고 [저장]만 표시.
+  /// - false : 그리드 탭으로 진입한 "수정" 흐름 — [미디어 삭제]와 [저장] 모두 표시.
+  final bool isNewlyAdded;
+
   const MediaDetailScreen({
     super.key,
     required this.items,
     this.initialIndex = 0,
+    this.isNewlyAdded = false,
   });
 
   @override
@@ -48,6 +62,11 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
   bool _saved = false;
   bool _locating = false;
   bool _ocrRunning = false;
+  // per-item lock 게이트: item.isLocked == 1 이고 세션 만료면 인증 필요.
+  // 인증 통과 전에는 본문(이미지/메타/메모) 일체를 가린다.
+  // 인증 실패 시 화면 종료. (spec 섹션 6 (c))
+  bool _gateChecked = false;
+  bool _gateAuthorized = false;
   late List<MediaItem> _previewItems; // 삭제 반영용 로컬 복사본
   late DateTime _eventDate; // 이벤트 날짜 (takenAt 기반, 편집 가능)
   late DateTime _initialEventDate;
@@ -55,13 +74,19 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
   final _mediaDao = MediaDao();
   final _tagDao = TagDao();
   final _peopleDao = PeopleDao();
+  final _countryDefaultService = CountryDefaultService();
 
   // 현재 편집 대상 아이템 (초기 선택 항목)
   MediaItem get item => widget.items[widget.initialIndex];
 
+  // 미디어 추가가 일어났는지 추적 — form 필드를 안 건드려도 저장 버튼이
+  // 활성화되어야 한다 (Bug 2 회귀 가드).
+  bool _mediaAdded = false;
+
   /// 현재 폼이 초기 상태에서 변경되었는지 여부
   bool get _isDirty {
-    return _noteCtrl.text.trim() != item.note.trim() ||
+    return _mediaAdded ||
+        _noteCtrl.text.trim() != item.note.trim() ||
         _countryCtrl.text.trim() != item.countryCode.trim() ||
         _regionCtrl.text.trim() != item.region.trim() ||
         _eventDate.millisecondsSinceEpoch !=
@@ -83,14 +108,116 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
     _eventDate = DateTime.fromMillisecondsSinceEpoch(item.takenAt);
     _initialEventDate = _eventDate;
     _loadTagsAndPeople();
+    // per-item lock 게이트 — 잠긴 항목은 인증 후에만 본문 노출
+    WidgetsBinding.instance.addPostFrameCallback((_) => _runLockGate());
     // Work 아이템이고 위치 정보가 없으면 EXIF에서 자동 입력
+    // 그래도 country가 비어있으면 default(폰 locale → 최근 등록 country) 적용.
     if (item.space == MediaSpace.work &&
         item.countryCode.isEmpty &&
         item.region.isEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _autoFillLocation(silent: true),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await _autoFillLocation(silent: true);
+        if (!mounted) return;
+        if (_countryCtrl.text.trim().isEmpty) {
+          await _applyCountryDefault();
+        }
+      });
+    } else if (item.space == MediaSpace.work && item.countryCode.isEmpty) {
+      // EXIF auto-fill 조건은 미충족(region은 채워져 있음) but country만 비어있는 경우
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await _applyCountryDefault();
+      });
     }
+  }
+
+  /// Country picker default 적용 — 폰 locale → 최근 등록 country fallback.
+  /// 빈 문자열이 반환되면 컨트롤러는 그대로 빈 채로 둔다 (사용자가 picker로 선택).
+  Future<void> _applyCountryDefault() async {
+    try {
+      final code = await _countryDefaultService.resolveDefault();
+      if (!mounted || code.isEmpty) return;
+      // EXIF가 동시에 채웠을 가능성 — race 가드
+      if (_countryCtrl.text.trim().isNotEmpty) return;
+      setState(() {
+        _countryCtrl.text = code;
+      });
+    } catch (_) {
+      // 조용히 무시 — 사용자는 picker로 직접 선택 가능.
+    }
+  }
+
+  /// ISO country code(예: "KR") → 사용자 친화 localized name(예: "대한민국") 변환.
+  /// `country_picker`의 Country 객체에서 `nameLocalized`(디바이스 locale 기반)를
+  /// 우선 사용하고, 없으면 영어 `name`, 매핑 실패 시 ISO 코드 그대로 fallback.
+  /// 빈 문자열 입력 → 빈 문자열 (placeholder가 hintText로 보임).
+  String _displayCountryName(String iso) {
+    final code = iso.trim().toUpperCase();
+    if (code.isEmpty) return '';
+    try {
+      final country = Country.tryParse(code);
+      if (country == null) return iso;
+      final localized = country.nameLocalized;
+      if (localized != null && localized.isNotEmpty) return localized;
+      return country.name;
+    } catch (_) {
+      return iso;
+    }
+  }
+
+  /// Country picker 진입 — 250개 국가 리스트 + 검색바 + flag emoji.
+  /// 한국어 라벨은 country_picker가 디바이스 locale에 맞춰 자동 처리.
+  void _showCountryPicker() {
+    showCountryPicker(
+      context: context,
+      showPhoneCode: false,
+      countryListTheme: const CountryListThemeData(
+        bottomSheetHeight: 500,
+        inputDecoration: InputDecoration(
+          labelText: '검색',
+          hintText: '국가 이름 또는 코드',
+          prefixIcon: Icon(Icons.search),
+        ),
+      ),
+      onSelect: (Country country) {
+        if (!mounted) return;
+        setState(() {
+          _countryCtrl.text = country.countryCode;
+        });
+      },
+    );
+  }
+
+  /// per-item lock 게이트 — 항목이 잠겨있고 세션 만료면 인증 다이얼로그 호출.
+  /// 인증 실패 시 화면 종료(pop). 통과하면 본문 노출 플래그를 켠다.
+  Future<void> _runLockGate() async {
+    if (!mounted) return;
+    if (item.isLocked != 1) {
+      setState(() {
+        _gateChecked = true;
+        _gateAuthorized = true;
+      });
+      return;
+    }
+    final session = ref.read(lockSessionProvider);
+    if (session.isUnlocked) {
+      setState(() {
+        _gateChecked = true;
+        _gateAuthorized = true;
+      });
+      return;
+    }
+    final LockAuthService auth = ref.read(lockAuthServiceProvider);
+    final ok = await auth.authenticate(context);
+    if (!mounted) return;
+    if (!ok) {
+      _saved = true; // PopScope dirty 가드 우회 (인증 실패는 강제 종료)
+      Navigator.of(context).pop();
+      return;
+    }
+    setState(() {
+      _gateChecked = true;
+      _gateAuthorized = true;
+    });
   }
 
   Future<void> _loadTagsAndPeople() async {
@@ -101,7 +228,7 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
 
     List<Person> allPeople = [];
     Set<int> selPersonIds = {};
-    if (item.space == MediaSpace.secret) {
+    if (item.space == MediaSpace.personal) {
       allPeople = await _peopleDao.findAll();
       if (item.id != null) {
         final selPeople = await _peopleDao.findByMediaId(item.id!);
@@ -244,6 +371,23 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
     super.dispose();
   }
 
+  /// 잠금 토글 (Detail 진입점) — 인증 후 lock/unlock + 그리드 갱신.
+  /// 토글 성공 시 detail을 pop 하여 상위에서 새 상태로 다시 진입하도록 한다.
+  /// (현재 화면의 _previewItems/MediaItem 인스턴스는 immutable이라 상태가
+  /// 어긋날 수 있으므로 pop 후 호출처에서 invalidate.)
+  Future<void> _toggleLock() async {
+    final ok = await handleLockToggle(context, ref, item);
+    if (!ok || !mounted) return;
+    // 양쪽 공간 모두 갱신 (work ↔ personal 모두 안전하게).
+    ref.invalidate(workMediaProvider);
+    ref.invalidate(secretMediaProvider);
+    _saved = true; // dirty 가드 우회
+    setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.pop(context, 'locked');
+    });
+  }
+
   Future<void> _save() async {
     setState(() => _saving = true);
 
@@ -257,7 +401,7 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
 
     if (updated.id != null) {
       await _tagDao.setMediaTags(updated.id!, _selectedTagIds.toList());
-      if (updated.space == MediaSpace.secret) {
+      if (updated.space == MediaSpace.personal) {
         await _peopleDao.setMediaPeople(
           updated.id!,
           _selectedPersonIds.toList(),
@@ -356,6 +500,17 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
     final isWork = item.space == MediaSpace.work;
     final cs = Theme.of(context).colorScheme;
 
+    // per-item lock 게이트 미통과 — 본문(이미지/메모/메타) 일체 가림
+    if (item.isLocked == 1 && (!_gateChecked || !_gateAuthorized)) {
+      return Scaffold(
+        appBar: AppBar(
+          foregroundColor: Colors.black87,
+          title: Text(isWork ? 'Work 미디어' : 'Personal 미디어'),
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return PopScope(
       canPop: _saved || !_isDirty,
       onPopInvokedWithResult: (didPop, _) async {
@@ -410,15 +565,14 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
           ),
           title: Text(isWork ? 'Work 미디어' : 'Personal 미디어'),
           actions: [
+            // 잠금 토글 (Detail 진입점) — Phase 3C
+            // (저장은 하단 sticky 액션 바로 이동 — UX 보강 A1/A2)
             IconButton(
-              icon: _saving
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.check),
-              onPressed: _saving ? null : _save,
+              icon: Icon(
+                item.isLocked == 1 ? Icons.lock_open : Icons.lock_outline,
+              ),
+              tooltip: item.isLocked == 1 ? '잠금 해제' : '잠금',
+              onPressed: _saving ? null : _toggleLock,
             ),
           ],
         ),
@@ -434,6 +588,23 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
 
               // ── 이벤트 날짜 ──
               _EventDateRow(date: _eventDate, onTap: _pickEventDate),
+              const SizedBox(height: 16),
+
+              // 태그 섹션 — 이벤트 날짜 바로 아래로 이동 (A5: 태그로 검색 용이)
+              _TagSection(
+                allTags: _allTags,
+                selectedTagIds: _selectedTagIds,
+                tagInputCtrl: _tagInputCtrl,
+                onToggle: (id) => setState(() {
+                  if (_selectedTagIds.contains(id)) {
+                    _selectedTagIds.remove(id);
+                  } else {
+                    _selectedTagIds.add(id);
+                  }
+                }),
+                onAddCustom: _addCustomTag,
+                colorScheme: cs,
+              ),
               const SizedBox(height: 16),
 
               // Work 위치 필드 (EXIF 자동 입력됨, 수동 수정 가능)
@@ -475,17 +646,28 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // 국가 — picker로만 입력. 표시는 사용자 친화 localized name
+                    // ("대한민국"), 저장은 ISO 코드("KR"). _countryCtrl.text는
+                    // ISO 그대로 보관 (DB 호환), UI 표시만 변환 (Bug 3 회귀 가드).
                     Expanded(
-                      child: TextField(
-                        controller: _countryCtrl,
-                        decoration: const InputDecoration(
-                          labelText: '국가',
-                          hintText: '대한민국',
-                          prefixIcon: Icon(Icons.flag_outlined, size: 18),
+                      child: InkWell(
+                        onTap: _showCountryPicker,
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: '국가',
+                            hintText: '선택',
+                            prefixIcon: Icon(Icons.flag_outlined, size: 18),
+                            suffixIcon: Icon(Icons.arrow_drop_down),
+                          ),
+                          child: Text(
+                            _displayCountryName(_countryCtrl.text),
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
                         ),
                       ),
                     ),
                     const SizedBox(width: 8),
+                    // 지역 — 사용자 직접 텍스트 입력 (picker 적용 X).
                     Expanded(
                       child: TextField(
                         controller: _regionCtrl,
@@ -504,10 +686,13 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
                 const SizedBox(height: 16),
               ],
 
-              // 메모
+              // 메모 — 1줄로 시작, 입력 내용에 맞춰 height 자동 확장 (A6)
               TextField(
                 controller: _noteCtrl,
-                maxLines: 4,
+                maxLines: null,
+                minLines: 1,
+                keyboardType: TextInputType.multiline,
+                textInputAction: TextInputAction.newline,
                 decoration: const InputDecoration(
                   labelText: '메모',
                   hintText: '메모를 입력하세요',
@@ -516,32 +701,8 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
               ),
               const SizedBox(height: 20),
 
-              // ── OCR 인식 텍스트 (사진·문서만) ──
-              if (item.mediaType != MediaType.video) ...[
-                const SizedBox(height: 20),
-                _OcrSection(item: item, isRunning: _ocrRunning, onRun: _runOcr),
-              ],
-              const SizedBox(height: 20),
-
-              // 태그 섹션
-              _TagSection(
-                allTags: _allTags,
-                selectedTagIds: _selectedTagIds,
-                tagInputCtrl: _tagInputCtrl,
-                onToggle: (id) => setState(() {
-                  if (_selectedTagIds.contains(id)) {
-                    _selectedTagIds.remove(id);
-                  } else {
-                    _selectedTagIds.add(id);
-                  }
-                }),
-                onAddCustom: _addCustomTag,
-                colorScheme: cs,
-              ),
-
               // 인물 (Personal 전용)
               if (!isWork) ...[
-                const SizedBox(height: 20),
                 Text(
                   '인물',
                   style: Theme.of(
@@ -561,38 +722,24 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
                     });
                   },
                 ),
+                const SizedBox(height: 20),
               ],
-              const SizedBox(height: 32),
 
-              // ── 삭제 버튼 (하단) ──
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: _delete,
-                  icon: const Icon(
-                    Icons.delete_outline,
-                    color: Colors.red,
-                    size: 18,
-                  ),
-                  label: const Text(
-                    '미디어 삭제',
-                    style: TextStyle(
-                      color: Colors.red,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.red, width: 1),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
+              // ── OCR 인식 텍스트 (사진·문서만) ──
+              if (item.mediaType != MediaType.video) ...[
+                _OcrSection(item: item, isRunning: _ocrRunning, onRun: _runOcr),
+              ],
               const SizedBox(height: 24),
             ],
           ),
+        ),
+        // 하단 sticky 액션 바 — 저장 + (수정 모드일 때만) 미디어 삭제 (A2)
+        bottomNavigationBar: _BottomActionBar(
+          isNewlyAdded: widget.isNewlyAdded,
+          isSaving: _saving,
+          isDirty: _isDirty,
+          onSave: _save,
+          onDelete: _delete,
         ),
       ), // PopScope
     );
@@ -633,23 +780,60 @@ class _MediaDetailScreenState extends ConsumerState<MediaDetailScreen> {
     );
   }
 
-  /// 미디어 추가 — CaptureBottomSheet로 선택 후 저장, _previewItems에 추가
+  /// 미디어 추가 — CaptureBottomSheet로 선택 후 저장, _previewItems에 추가.
+  ///
+  /// 사용자 의도: 기존 work/personal 카드에 사진을 더 추가하면 같은 카드에
+  /// 묶여야 함. MediaTimeline은 batchId 기준 그룹화이므로, 신규 항목을
+  /// 기존 그룹의 batchId로 저장한다 (overrideBatchId).
+  ///
+  /// 기존 그룹이 단일 사진이라 batchId == '' 이면, 새 batchId를 부여하면서
+  /// 기존 row도 함께 갱신해 둘이 같은 카드로 묶이도록 한다.
   Future<void> _addMedia() async {
-    final captured = await CaptureBottomSheet.show(
+    final captureResult = await CaptureBottomSheet.show(
       context,
       allowDocument: item.space == MediaSpace.work,
       space: item.space,
     );
-    if (captured == null || captured.isEmpty || !mounted) return;
+    if (captureResult == null ||
+        captureResult.items.isEmpty ||
+        !mounted) {
+      return;
+    }
     try {
+      // 기존 그룹의 batchId 결정.
+      String batchId = _previewItems.first.batchId;
+      if (batchId.isEmpty) {
+        // 단일 사진 그룹 — 신규 batchId 만들고 기존 row(s)도 같은 batchId로 갱신.
+        // 메모리 _previewItems도 함께 갱신해 다음 _addMedia 호출 시 같은 batchId
+        // 인계가 정확히 작동하도록 한다.
+        batchId = const Uuid().v4();
+        final updatedExisting = <MediaItem>[];
+        for (final existing in _previewItems) {
+          if (existing.id != null) {
+            final updated = existing.copyWith(batchId: batchId);
+            await _mediaDao.update(updated);
+            updatedExisting.add(updated);
+          } else {
+            updatedExisting.add(existing);
+          }
+        }
+        _previewItems = updatedExisting;
+      }
+
       final results = await MediaSaveService.saveAll(
-        captured: captured,
+        captured: captureResult.items,
         space: item.space,
         albumId: item.albumId,
+        overrideBatchId: batchId,
       );
       if (!mounted) return;
       setState(() {
+        // 사용자 의도: "최하단에 하나씩 붙이는 방식". append로 추가.
+        // group 안 정렬은 MediaTimeline._groupByBatch가 createdAt ASC로 처리해
+        // 재진입 시에도 같은 순서 유지 (오래된 사진 먼저, 새 추가가 마지막).
         _previewItems = [..._previewItems, ...results.map((r) => r.item)];
+        // 저장 버튼 활성화 트리거 — form 필드 미변경이어도 dirty로 간주 (Bug 2).
+        _mediaAdded = true;
       });
     } catch (e) {
       if (!mounted) return;
@@ -1033,8 +1217,11 @@ class _MediaMeta extends StatelessWidget {
 }
 
 // ── OCR 섹션 ─────────────────────────────────────────────────
+//
+// A4: OCR 결과는 기본 2줄까지만 표시하고, 멀티라인 또는 60자 초과인 경우
+// "더보기"/"접기" 토글로 전체 본문을 펼칠 수 있다.
 
-class _OcrSection extends StatelessWidget {
+class _OcrSection extends StatefulWidget {
   final MediaItem item;
   final bool isRunning;
   final VoidCallback onRun;
@@ -1046,10 +1233,25 @@ class _OcrSection extends StatelessWidget {
   });
 
   @override
+  State<_OcrSection> createState() => _OcrSectionState();
+}
+
+class _OcrSectionState extends State<_OcrSection> {
+  bool _expanded = false;
+
+  static const int _ocrCollapsedMaxLines = 2;
+  static const int _ocrExpandThresholdChars = 60;
+
+  bool get _shouldShowToggle {
+    final text = widget.item.ocrText;
+    return text.contains('\n') || text.length > _ocrExpandThresholdChars;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cs = Theme.of(context).colorScheme;
-    final hasText = item.ocrText.isNotEmpty;
+    final hasText = widget.item.ocrText.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1069,8 +1271,8 @@ class _OcrSection extends StatelessWidget {
             ),
             // 실행 버튼
             TextButton.icon(
-              onPressed: isRunning ? null : onRun,
-              icon: isRunning
+              onPressed: widget.isRunning ? null : widget.onRun,
+              icon: widget.isRunning
                   ? const SizedBox(
                       width: 14,
                       height: 14,
@@ -1078,7 +1280,9 @@ class _OcrSection extends StatelessWidget {
                     )
                   : const Icon(Icons.document_scanner_outlined, size: 16),
               label: Text(
-                isRunning ? '인식 중...' : (hasText ? '재인식' : '텍스트 인식'),
+                widget.isRunning
+                    ? '인식 중...'
+                    : (hasText ? '재인식' : '텍스트 인식'),
                 style: const TextStyle(fontSize: 13),
               ),
               style: TextButton.styleFrom(
@@ -1119,7 +1323,7 @@ class _OcrSection extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      '인식된 텍스트 (${item.ocrText.length}자)',
+                      '인식된 텍스트 (${widget.item.ocrText.length}자)',
                       style: TextStyle(
                         fontSize: 11,
                         color: cs.primary,
@@ -1130,7 +1334,9 @@ class _OcrSection extends StatelessWidget {
                     // 클립보드 복사
                     GestureDetector(
                       onTap: () {
-                        Clipboard.setData(ClipboardData(text: item.ocrText));
+                        Clipboard.setData(
+                          ClipboardData(text: widget.item.ocrText),
+                        );
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text('클립보드에 복사했습니다'),
@@ -1147,14 +1353,54 @@ class _OcrSection extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  item.ocrText,
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.6,
-                    color: isDark ? Colors.white70 : const Color(0xFF2D3748),
+                // A4: 기본 2줄(maxLines: 2 + ellipsis), 펼침 시 전체 표시
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 180),
+                  alignment: Alignment.topLeft,
+                  child: Text(
+                    widget.item.ocrText,
+                    maxLines: _expanded ? null : _ocrCollapsedMaxLines,
+                    overflow: _expanded
+                        ? TextOverflow.visible
+                        : TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.6,
+                      color: isDark ? Colors.white70 : const Color(0xFF2D3748),
+                    ),
                   ),
                 ),
+                if (_shouldShowToggle) ...[
+                  const SizedBox(height: 6),
+                  GestureDetector(
+                    onTap: () => setState(() => _expanded = !_expanded),
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _expanded ? '접기' : '더보기',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: cs.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          Icon(
+                            _expanded
+                                ? Icons.keyboard_arrow_up
+                                : Icons.keyboard_arrow_down,
+                            size: 16,
+                            color: cs.primary,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           )
@@ -1196,6 +1442,103 @@ class _OcrSection extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+// ── 하단 sticky 액션 바 ──────────────────────────────────────
+//
+// A2: AppBar 우상단의 저장 아이콘을 제거하고, 화면 하단에 항상 보이는
+// 액션 바로 [미디어 삭제] [저장] 버튼을 노출.
+// - isNewlyAdded == true  → [저장]만 풀너비.
+// - isNewlyAdded == false → [미디어 삭제] (좌, 빨강) + [저장] (우, primary).
+
+class _BottomActionBar extends StatelessWidget {
+  final bool isNewlyAdded;
+  final bool isSaving;
+  final bool isDirty;
+  final VoidCallback onSave;
+  final VoidCallback onDelete;
+
+  const _BottomActionBar({
+    required this.isNewlyAdded,
+    required this.isSaving,
+    required this.isDirty,
+    required this.onSave,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final canSave = !isSaving && (isDirty || isNewlyAdded);
+
+    final saveButton = FilledButton.icon(
+      onPressed: canSave ? onSave : null,
+      icon: isSaving
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.check, size: 18),
+      label: Text(isSaving ? '저장 중...' : '저장'),
+      style: FilledButton.styleFrom(
+        backgroundColor: cs.primary,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        textStyle: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+
+    final deleteButton = OutlinedButton.icon(
+      onPressed: isSaving ? null : onDelete,
+      icon: const Icon(Icons.delete_outline, color: Colors.red, size: 18),
+      label: const Text(
+        '미디어 삭제',
+        style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+      ),
+      style: OutlinedButton.styleFrom(
+        side: const BorderSide(color: Colors.red, width: 1),
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          border: Border(
+            top: BorderSide(
+              color: Theme.of(context).dividerColor.withValues(alpha: 0.6),
+              width: 0.6,
+            ),
+          ),
+        ),
+        child: isNewlyAdded
+            ? SizedBox(width: double.infinity, child: saveButton)
+            : Row(
+                children: [
+                  Expanded(child: deleteButton),
+                  const SizedBox(width: 10),
+                  Expanded(child: saveButton),
+                ],
+              ),
+      ),
     );
   }
 }

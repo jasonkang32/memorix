@@ -100,7 +100,7 @@ class _ScaffoldWithNavBar extends ConsumerWidget {
             NavigationDestination(
               icon: Icon(Icons.lock_outline_rounded),
               selectedIcon: Icon(Icons.lock_rounded),
-              label: 'Secret',
+              label: 'Personal',
             ),
             NavigationDestination(
               icon: Icon(Icons.settings_outlined),

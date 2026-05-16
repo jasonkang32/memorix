@@ -60,7 +60,7 @@ class HomeScreen extends ConsumerWidget {
                         const SizedBox(width: 12),
                         Expanded(
                           child: _SpaceCard(
-                            label: 'Secret',
+                            label: 'Personal',
                             count: s.secretCount,
                             byType: s.secretByType,
                             sub: '앨범 ${s.albumCount}개 · 인물 ${s.peopleCount}명',

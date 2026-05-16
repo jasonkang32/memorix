@@ -13,8 +13,10 @@ import '../../../features/home/providers/home_provider.dart';
 import '../../../shared/models/media_item.dart';
 import '../../../shared/widgets/capture_bottom_sheet.dart';
 import '../../../shared/widgets/media_timeline.dart';
+import '../../../shared/widgets/media_long_press_menu.dart';
 import '../../../shared/screens/media_detail_screen.dart';
 import '../../../shared/screens/media_viewer_screen.dart';
+import '../../../features/auth/services/lock_toggle_helper.dart';
 import 'report_screen.dart';
 import '../../../shared/theme/app_theme.dart';
 
@@ -83,8 +85,21 @@ class _WorkScreenState extends ConsumerState<WorkScreen> {
                   : MediaTimeline(
                       items: items,
                       onTap: (group, idx) => _openDetail(context, group, idx),
-                      onLongPress: (item) => _openViewer(context, [item], 0),
+                      onLongPress: (item) => MediaLongPressMenu.show(
+                        context: context,
+                        ref: ref,
+                        item: item,
+                        onOpenViewer: () => _openViewer(context, [item], 0),
+                        onAfterToggle: () =>
+                            ref.invalidate(workMediaProvider),
+                      ),
                       onRefresh: () async => ref.invalidate(workMediaProvider),
+                      onLockToggle: (item) async {
+                        await handleLockToggle(context, ref, item);
+                        if (context.mounted) {
+                          ref.invalidate(workMediaProvider);
+                        }
+                      },
                     ),
             ),
     );
@@ -212,7 +227,24 @@ class _WorkScreenState extends ConsumerState<WorkScreen> {
     return MediaTimeline(
       items: results,
       onTap: (group, idx) => _openDetail(context, group, idx),
-      onLongPress: (item) => _openViewer(context, [item], 0),
+      onLongPress: (item) => MediaLongPressMenu.show(
+        context: context,
+        ref: ref,
+        item: item,
+        onOpenViewer: () => _openViewer(context, [item], 0),
+        onAfterToggle: () {
+          ref.invalidate(workMediaProvider);
+          // 검색 결과도 즉시 갱신
+          if (_query.isNotEmpty) _runSearch(_query);
+        },
+      ),
+      onLockToggle: (item) async {
+        await handleLockToggle(context, ref, item);
+        if (context.mounted) {
+          ref.invalidate(workMediaProvider);
+          if (_query.isNotEmpty) _runSearch(_query);
+        }
+      },
     );
   }
 
@@ -221,12 +253,12 @@ class _WorkScreenState extends ConsumerState<WorkScreen> {
   }
 
   Future<void> _onAddMedia(BuildContext context) async {
-    final capturedList = await CaptureBottomSheet.show(
+    final captureResult = await CaptureBottomSheet.show(
       context,
       allowDocument: true,
     );
 
-    if (capturedList == null || capturedList.isEmpty) {
+    if (captureResult == null || captureResult.items.isEmpty) {
       if (mounted) setState(() => _isImporting = false);
       return;
     }
@@ -234,6 +266,9 @@ class _WorkScreenState extends ConsumerState<WorkScreen> {
       if (mounted) setState(() => _isImporting = false);
       return;
     }
+
+    final capturedList = captureResult.items;
+    final deleteOriginal = captureResult.deleteOriginal;
 
     final total = capturedList.length;
     final progressNotifier = ValueNotifier<int>(0);
@@ -339,20 +374,29 @@ class _WorkScreenState extends ConsumerState<WorkScreen> {
         );
       }
 
+      // 사용자가 capture sheet에서 "원본 삭제" toggle을 ON으로 했으면
+      // 별도 confirm 없이 자동 삭제 (Bug #3 — 다이얼로그 제거).
+      if (deleteOriginal && capturedList.isNotEmpty) {
+        await _runOriginalCleanup(context, capturedList);
+      }
+
+      if (!context.mounted) return;
+
       final savedItems = results.map((r) => r.item).toList();
-      final detailChanged = await Navigator.push<dynamic>(
+      await Navigator.push<dynamic>(
         context,
         MaterialPageRoute(
-          builder: (_) => MediaDetailScreen(items: savedItems, initialIndex: 0),
+          builder: (_) => MediaDetailScreen(
+            items: savedItems,
+            initialIndex: 0,
+            isNewlyAdded: true,
+          ),
         ),
       );
 
       if (context.mounted) {
         ref.invalidate(workMediaProvider);
         ref.invalidate(homeSummaryProvider);
-      }
-      if (context.mounted && detailChanged != null) {
-        await _offerDeleteOriginals(context, capturedList);
       }
     } catch (e) {
       closeProgressDialog();
@@ -367,36 +411,13 @@ class _WorkScreenState extends ConsumerState<WorkScreen> {
     }
   }
 
-  Future<void> _offerDeleteOriginals(
+  /// CaptureBottomSheet의 "원본 삭제" toggle이 ON일 때 호출.
+  /// 다이얼로그 confirm 없이 즉시 실행하고 결과만 SnackBar로 알림.
+  Future<void> _runOriginalCleanup(
     BuildContext context,
     List<CapturedMedia> capturedList,
   ) async {
-    if (capturedList.isEmpty) return;
-
-    final shouldDelete = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('원본 사진을 정리할까요?'),
-        content: const Text(
-          '선택한 파일은 메모릭스 보관함에 복사되었습니다. '
-          '갤러리에 원본을 그대로 두면 같은 사진이 두 곳에 남습니다.\n\n'
-          '메모릭스에만 보관하려면 원본 삭제를 권장합니다.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('그대로 두기'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            icon: const Icon(Icons.delete_outline),
-            label: const Text('원본 삭제'),
-          ),
-        ],
-      ),
-    );
-
-    if (shouldDelete != true || !context.mounted) return;
+    if (capturedList.isEmpty || !context.mounted) return;
 
     final result = await OriginalMediaCleanupService.deleteOriginals(
       capturedList,

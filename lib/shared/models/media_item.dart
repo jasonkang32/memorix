@@ -1,22 +1,22 @@
 /// 미디어 영역.
-/// `personal`은 v1.x 호환을 위해 남겨두며, DB에는 더 이상 새로 기록되지 않는다.
-/// 마이그레이션 v6에서 모든 row가 `secret`으로 일괄 변환된다.
-enum MediaSpace { work, secret, personal }
+///
+/// v7 마이그레이션에서 모든 legacy 값('secret', 옛 'personal')이 'personal'로
+/// 통합됨 + is_locked=1로 잠금 보존. 이 enum은 두 공간만 가진다.
+enum MediaSpace { work, personal }
 
 enum MediaType { photo, video, document }
 
 extension MediaSpaceX on MediaSpace {
-  /// DB 저장값 — 'personal'은 더 이상 쓰지 않지만 fromMap 호환을 위해 유지
+  /// DB 저장값.
   String get dbValue => switch (this) {
     MediaSpace.work => 'work',
-    MediaSpace.secret => 'secret',
-    MediaSpace.personal => 'secret', // 새 row는 항상 secret으로 저장
+    MediaSpace.personal => 'personal',
   };
 
+  /// 모든 legacy 값을 흡수 — 'secret'(v6)과 옛 'personal'(v1.x) 모두 personal로.
   static MediaSpace parse(String? raw) => switch (raw) {
     'work' => MediaSpace.work,
-    // legacy 'personal' 값도 secret으로 해석한다
-    'personal' || 'secret' => MediaSpace.secret,
+    'secret' || 'personal' => MediaSpace.personal,
     _ => MediaSpace.work,
   };
 }
@@ -51,6 +51,9 @@ class MediaItem {
   final int? jobId;
   // Secret vault 암호화 여부 (1 = filePath/thumbPath가 .enc 파일)
   final int encrypted;
+  // 항목별 잠금 상태 (1 = 인증 필요). encrypted와 의미 분리:
+  // 일반적으로 동기화되지만(잠금=.enc), 분리해두면 마이그레이션/디버깅에 명확.
+  final int isLocked;
 
   const MediaItem({
     this.id,
@@ -75,9 +78,11 @@ class MediaItem {
     this.ocrText = '',
     this.jobId,
     this.encrypted = 0,
+    this.isLocked = 0,
   });
 
   bool get isEncrypted => encrypted == 1;
+  bool get locked => isLocked == 1;
 
   factory MediaItem.fromMap(Map<String, dynamic> map) => MediaItem(
     id: map['id'] as int?,
@@ -102,6 +107,7 @@ class MediaItem {
     ocrText: map['ocr_text'] as String? ?? '',
     jobId: map['job_id'] as int?,
     encrypted: map['encrypted'] as int? ?? 0,
+    isLocked: map['is_locked'] as int? ?? 0,
   );
 
   Map<String, dynamic> toMap() => {
@@ -127,6 +133,7 @@ class MediaItem {
     'ocr_text': ocrText,
     'job_id': jobId,
     'encrypted': encrypted,
+    'is_locked': isLocked,
   };
 
   static MediaType _parseType(String s) => switch (s) {
@@ -159,6 +166,7 @@ class MediaItem {
     int? jobId,
     bool clearJobId = false,
     int? encrypted,
+    int? isLocked,
   }) => MediaItem(
     id: id ?? this.id,
     space: space ?? this.space,
@@ -182,5 +190,6 @@ class MediaItem {
     ocrText: ocrText ?? this.ocrText,
     jobId: clearJobId ? null : (jobId ?? this.jobId),
     encrypted: encrypted ?? this.encrypted,
+    isLocked: isLocked ?? this.isLocked,
   );
 }

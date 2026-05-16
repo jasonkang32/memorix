@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
@@ -11,8 +12,10 @@ import '../models/media_item.dart';
 import '../../core/db/media_dao.dart';
 import '../../core/services/secret_vault_service.dart';
 import '../../core/services/storage_service.dart';
+import '../../features/auth/providers/lock_session_provider.dart';
+import '../../features/auth/services/lock_auth_service.dart';
 
-class MediaViewerScreen extends StatefulWidget {
+class MediaViewerScreen extends ConsumerStatefulWidget {
   final List<MediaItem> items;
   final int initialIndex;
 
@@ -23,15 +26,20 @@ class MediaViewerScreen extends StatefulWidget {
   });
 
   @override
-  State<MediaViewerScreen> createState() => _MediaViewerScreenState();
+  ConsumerState<MediaViewerScreen> createState() => _MediaViewerScreenState();
 }
 
-class _MediaViewerScreenState extends State<MediaViewerScreen> {
+class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen> {
   late int _current;
   late PageController _pageCtrl;
   late List<MediaItem> _items;
   bool _uiVisible = true;
   bool _deleting = false;
+  // per-item lock 게이트: 인증 통과 전에는 콘텐츠를 가린다.
+  // 첫 항목이 isLocked == 1 이고 세션이 만료된 경우 initState에서 인증을 띄우고
+  // 실패하면 화면 자체를 종료한다. 인증 성공 또는 잠긴 항목이 아니면 즉시 통과.
+  bool _gateChecked = false;
+  bool _gateAuthorized = false;
 
   final _mediaDao = MediaDao();
 
@@ -43,6 +51,34 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
     _pageCtrl = PageController(initialPage: _current);
     // edgeToEdge: 네비게이션 바를 항상 표시 (immersiveSticky는 백버튼 영역을 가림)
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    // per-item lock 인증 게이트 (첫 진입 시 첫 인덱스가 잠겨있으면 인증 요구)
+    WidgetsBinding.instance.addPostFrameCallback((_) => _runLockGate());
+  }
+
+  /// per-item lock 게이트 — 첫 항목이 잠겨있고 세션이 unlock 상태가 아니면 인증.
+  /// 인증 실패 시 viewer 종료. 그 후 5분 세션 동안은 스와이프 자유.
+  Future<void> _runLockGate() async {
+    if (!mounted) return;
+    final item = _items[_current];
+    final session = ref.read(lockSessionProvider);
+    if (item.isLocked != 1 || session.isUnlocked) {
+      setState(() {
+        _gateChecked = true;
+        _gateAuthorized = true;
+      });
+      return;
+    }
+    final LockAuthService auth = ref.read(lockAuthServiceProvider);
+    final ok = await auth.authenticate(context);
+    if (!mounted) return;
+    if (!ok) {
+      Navigator.of(context).pop();
+      return;
+    }
+    setState(() {
+      _gateChecked = true;
+      _gateAuthorized = true;
+    });
   }
 
   @override
@@ -103,6 +139,15 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
   @override
   Widget build(BuildContext context) {
     if (_items.isEmpty) return const SizedBox.shrink();
+    // per-item lock 게이트 통과 전 — 검은 화면 + 인디케이터로 콘텐츠 보호
+    if (!_gateChecked || !_gateAuthorized) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: CircularProgressIndicator(color: Colors.white54),
+        ),
+      );
+    }
     final item = _items[_current];
 
     return Scaffold(
