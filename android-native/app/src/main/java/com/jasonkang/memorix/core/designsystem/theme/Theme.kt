@@ -14,9 +14,9 @@ private val LightColors = lightColorScheme(
     tertiary = MemorixPersonalStart,
     background = MemorixSurfaceLight,
     onBackground = MemorixTextLight,
-    surface = MemorixSurfaceLight,
+    surface = MemorixCardLight,
     onSurface = MemorixTextLight,
-    surfaceVariant = MemorixCardLight,
+    surfaceVariant = MemorixBorderLight,
     onSurfaceVariant = MemorixMutedLight,
     outline = MemorixBorderLight,
 )

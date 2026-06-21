@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -34,7 +36,7 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Work
 import androidx.compose.material.icons.outlined.Favorite
-import androidx.compose.material.icons.rounded.Collections
+import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.PermMedia
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Search
@@ -65,13 +67,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jasonkang.memorix.core.database.entity.MediaItemEntity
 import com.jasonkang.memorix.core.database.entity.MediaSpace
 import com.jasonkang.memorix.core.database.entity.MediaType
-import com.jasonkang.memorix.core.designsystem.theme.MemorixAccentOrange
+
 import com.jasonkang.memorix.core.designsystem.theme.MemorixBorderDark
 import com.jasonkang.memorix.core.designsystem.theme.MemorixBorderLight
 import com.jasonkang.memorix.core.designsystem.theme.MemorixCardDark
@@ -147,8 +150,7 @@ fun HomeScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(backgroundColor)
-            .padding(horizontal = 16.dp),
+            .background(backgroundColor),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
@@ -156,32 +158,36 @@ fun HomeScreen(
         }
 
         item {
-            SummaryCard(summary = summary, cardColor = cardColor, borderColor = borderColor)
+            PaddedHomeContent {
+                SummaryCard(summary = summary, cardColor = cardColor, borderColor = borderColor)
+            }
         }
 
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                SpaceCard(
-                    modifier = Modifier.weight(1f),
-                    label = "Work",
-                    count = summary.workCount,
-                    subtitle = "사진 ${summary.workPhotoCount}개 · 영상 ${summary.workVideoCount}개",
-                    gradient = Brush.linearGradient(listOf(MemorixWorkStart, MemorixWorkEnd)),
-                    icon = Icons.Outlined.Work,
-                    onClick = onWorkClick,
-                )
-                SpaceCard(
-                    modifier = Modifier.weight(1f),
-                    label = "Personal",
-                    count = summary.personalCount,
-                    subtitle = "사진 ${summary.personalPhotoCount}개 · 영상 ${summary.personalVideoCount}개",
-                    gradient = Brush.linearGradient(listOf(MemorixPersonalStart, MemorixPersonalEnd)),
-                    icon = Icons.Outlined.Favorite,
-                    onClick = onPersonalClick,
-                )
+            PaddedHomeContent {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    SpaceCard(
+                        modifier = Modifier.weight(1f),
+                        label = "Work",
+                        count = summary.workCount,
+                        subtitle = "사진 ${summary.workPhotoCount}개 · 영상 ${summary.workVideoCount}개",
+                        gradient = Brush.linearGradient(listOf(MemorixWorkStart, MemorixWorkEnd)),
+                        icon = Icons.Outlined.Work,
+                        onClick = onWorkClick,
+                    )
+                    SpaceCard(
+                        modifier = Modifier.weight(1f),
+                        label = "Personal",
+                        count = summary.personalCount,
+                        subtitle = "앨범 ${summary.albumEstimate}개 · 인물 0명",
+                        gradient = Brush.linearGradient(listOf(MemorixPersonalStart, MemorixPersonalEnd)),
+                        icon = Icons.Outlined.Favorite,
+                        onClick = onPersonalClick,
+                    )
+                }
             }
         }
 
@@ -212,30 +218,30 @@ fun HomeScreen(
         }
 
         item {
-            SectionTitle(title = "최근 등록")
+            PaddedHomeContent { SectionTitle(title = "최근 등록") }
         }
         if (uiState.items.isEmpty()) {
             item {
-                EmptyState()
+                PaddedHomeContent { EmptyState() }
             }
         } else {
             item {
-                RecentRow(items = uiState.items.take(8), onMediaClick = onMediaClick)
+                PaddedHomeContent { RecentRow(items = uiState.items.take(8), onMediaClick = onMediaClick) }
             }
             item {
-                SectionTitle(title = "최근 30일 활동")
+                PaddedHomeContent { SectionTitle(title = "최근 30일 활동") }
             }
             item {
-                ActivityChart(items = uiState.items)
+                PaddedHomeContent { ActivityChart(items = uiState.items) }
             }
             item {
-                SectionTitle(title = "저장 공간")
+                PaddedHomeContent { SectionTitle(title = "저장 공간") }
             }
             item {
-                StorageUsageCard(summary = summary)
+                PaddedHomeContent { StorageUsageCard(summary = summary) }
             }
             item {
-                TypeBreakdown(summary = summary)
+                PaddedHomeContent { TypeBreakdown(summary = summary) }
             }
             item {
                 Spacer(modifier = Modifier.height(96.dp))
@@ -284,6 +290,17 @@ fun HomeScreen(
 }
 
 @Composable
+private fun PaddedHomeContent(content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+    ) {
+        content()
+    }
+}
+
+@Composable
 private fun HeroHeader(
     onSearch: () -> Unit,
 ) {
@@ -294,24 +311,29 @@ private fun HeroHeader(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 12.dp)
-            .clip(RoundedCornerShape(24.dp))
+            .height(110.dp)
             .background(Brush.linearGradient(listOf(MemorixPrimary, MemorixSecondary)))
-            .padding(horizontal = 20.dp, vertical = 18.dp),
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        contentAlignment = Alignment.BottomStart,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "Memorix",
-                    style = MaterialTheme.typography.headlineSmall,
+                    fontSize = 24.sp,
                     color = Color.White,
-                    fontWeight = FontWeight.ExtraBold,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = (-0.5).sp,
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
                     text = dateText,
-                    style = MaterialTheme.typography.labelMedium,
+                    fontSize = 13.sp,
                     color = Color.White,
+                    fontWeight = FontWeight.Bold,
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Icon(
@@ -323,8 +345,10 @@ private fun HeroHeader(
             }
             Text(
                 text = "기억은 빠르게, 보관은 조용하게.",
-                style = MaterialTheme.typography.labelMedium,
+                fontSize = 13.sp,
                 color = Color.White,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.3.sp,
             )
         }
     }
@@ -371,20 +395,19 @@ private fun SummaryCard(
     cardColor: Color,
     borderColor: Color,
 ) {
+    val shape = RoundedCornerShape(20.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(shape)
             .background(cardColor)
+            .border(1.dp, borderColor, shape)
             .padding(20.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        SummaryStat(
+        TotalSummaryStat(
             modifier = Modifier.weight(1f),
-            icon = Icons.Rounded.PermMedia,
-            title = "등록 수",
-            value = "${summary.totalCount}개",
-            color = MemorixPrimary,
+            summary = summary,
         )
         DividerBlock(borderColor = borderColor)
         SummaryStat(
@@ -397,10 +420,10 @@ private fun SummaryCard(
         DividerBlock(borderColor = borderColor)
         SummaryStat(
             modifier = Modifier.weight(1f),
-            icon = Icons.Rounded.Collections,
-            title = "문서 포함",
-            value = "${summary.documentCount}개",
-            color = if (summary.documentCount > 0) MemorixWarning else MemorixAccentOrange,
+            icon = Icons.Rounded.CloudUpload,
+            title = "Drive 대기",
+            value = "0개",
+            color = MemorixPrimary,
         )
     }
 }
@@ -413,6 +436,47 @@ private fun DividerBlock(borderColor: Color) {
             .height(64.dp)
             .background(borderColor),
     )
+}
+
+@Composable
+private fun TotalSummaryStat(
+    modifier: Modifier = Modifier,
+    summary: HomeSummary,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Icon(Icons.Rounded.PermMedia, contentDescription = null, tint = MemorixPrimary, modifier = Modifier.height(22.dp))
+        Text(
+            "${summary.totalCount}개",
+            fontSize = 18.sp,
+            color = MemorixPrimary,
+            fontWeight = FontWeight.ExtraBold,
+        )
+        Text("등록 수", fontSize = 11.sp, color = Color.Gray)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            MiniTypeLabel("사진", summary.photoCount, MemorixWorkStart)
+            MiniTypeLabel("영상", summary.videoCount, MemorixPersonalStart)
+            if (summary.documentCount > 0) {
+                MiniTypeLabel("문서", summary.documentCount, MemorixWarning)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniTypeLabel(label: String, count: Int, color: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .background(color, shape = androidx.compose.foundation.shape.CircleShape),
+        )
+        Spacer(modifier = Modifier.width(3.dp))
+        Text("$label $count", fontSize = 10.sp, color = color, fontWeight = FontWeight.SemiBold)
+    }
 }
 
 @Composable
