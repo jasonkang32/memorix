@@ -191,6 +191,28 @@ fun HomeScreen(
             }
         }
 
+        item {
+            PaddedHomeContent {
+                QuickImportSection(
+                    isImporting = uiState.isImporting,
+                    onPickMedia = {
+                        pickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                    },
+                    onPickDateRange = {
+                        dateRangePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                    },
+                    onOpenCamera = {
+                        val capture = createPendingCameraCapture(context)
+                        pendingCameraCapture = capture
+                        cameraLauncher.launch(capture.outputUri)
+                    },
+                    onOpenDocument = {
+                        documentLauncher.launch("*/*")
+                    },
+                )
+            }
+        }
+
         if (uiState.isImporting) {
             item {
                 CircularProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).wrapContentWidth(Alignment.CenterHorizontally))

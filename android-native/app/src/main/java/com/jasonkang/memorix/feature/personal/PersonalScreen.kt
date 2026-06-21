@@ -1,5 +1,9 @@
 package com.jasonkang.memorix.feature.personal
 
+import android.content.Context
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,7 +28,9 @@ import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.ViewAgenda
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
@@ -35,6 +41,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,16 +50,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.core.content.FileProvider
 import com.jasonkang.memorix.core.database.entity.AlbumSummary
+import com.jasonkang.memorix.core.media.CameraCaptureSupport
+import com.jasonkang.memorix.core.media.PendingCameraCapture
 import com.jasonkang.memorix.core.designsystem.theme.MemorixPersonalEnd
 import com.jasonkang.memorix.core.designsystem.theme.MemorixPersonalStart
 import com.jasonkang.memorix.feature.albums.AlbumCard
 import com.jasonkang.memorix.feature.albums.AlbumEditDialog
 import com.jasonkang.memorix.feature.home.component.MediaGrid
+import java.io.File
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.util.UUID
 
 @Composable
 fun PersonalScreen(
@@ -61,8 +76,29 @@ fun PersonalScreen(
     viewModel: PersonalViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     var showCreateDialog by remember { mutableStateOf(false) }
+    var showRegisterDialog by remember { mutableStateOf(false) }
     var searching by remember { mutableStateOf(false) }
+    var pendingCameraCapture by remember { mutableStateOf<PendingCameraCapture?>(null) }
+    val mediaPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 30),
+    ) { uris -> viewModel.importMedia(uris) }
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture(),
+    ) { success ->
+        val uris = CameraCaptureSupport.resolveCapturedUris(success, pendingCameraCapture)
+        if (!success) pendingCameraCapture?.outputFile?.delete()
+        pendingCameraCapture = null
+        viewModel.importMedia(uris)
+    }
+
+    LaunchedEffect(uiState.importMessage, uiState.errorMessage) {
+        if (uiState.importMessage != null || uiState.errorMessage != null) {
+            kotlinx.coroutines.delay(2_500)
+            viewModel.consumeImportMessages()
+        }
+    }
 
     if (showCreateDialog) {
         AlbumEditDialog(
@@ -71,6 +107,22 @@ fun PersonalScreen(
             onConfirm = { title, memo ->
                 viewModel.createAlbum(title, memo)
                 showCreateDialog = false
+            },
+        )
+    }
+
+    if (showRegisterDialog) {
+        PersonalRegisterDialog(
+            onDismiss = { showRegisterDialog = false },
+            onPickMedia = {
+                showRegisterDialog = false
+                mediaPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+            },
+            onOpenCamera = {
+                showRegisterDialog = false
+                val capture = createPersonalPendingCameraCapture(context)
+                pendingCameraCapture = capture
+                cameraLauncher.launch(capture.outputUri)
             },
         )
     }
@@ -86,9 +138,19 @@ fun PersonalScreen(
             onToggleAlbumGrid = viewModel::toggleAlbumGrid,
             onCreateAlbum = { showCreateDialog = true },
             onSearch = { searching = true },
-            onAddMedia = { },
+            onAddMedia = { showRegisterDialog = true },
             modifier = Modifier.padding(top = 12.dp),
         )
+
+        uiState.importMessage?.let { message ->
+            PersonalStatusBanner(message = message, isError = false)
+        }
+        uiState.errorMessage?.let { message ->
+            PersonalStatusBanner(message = message, isError = true)
+        }
+        if (uiState.isImporting) {
+            PersonalStatusBanner(message = "등록 중입니다...", isError = false)
+        }
 
         if (searching) {
             OutlinedTextField(
@@ -296,4 +358,67 @@ private fun EmptyPersonalTimelineBlock(hasQuery: Boolean) {
             )
         }
     }
+}
+
+@Composable
+private fun PersonalRegisterDialog(
+    onDismiss: () -> Unit,
+    onPickMedia: () -> Unit,
+    onOpenCamera: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Personal 등록") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("개인 사진·영상을 Memorix 내부 저장소에 복사해 등록합니다.", style = MaterialTheme.typography.bodySmall)
+                Button(onClick = onOpenCamera, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Outlined.AddAPhoto, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("카메라로 촬영")
+                }
+                Button(onClick = onPickMedia, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Outlined.Collections, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("사진·영상 가져오기")
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            Button(onClick = onDismiss) { Text("닫기") }
+        },
+    )
+}
+
+@Composable
+private fun PersonalStatusBanner(message: String, isError: Boolean) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = if (isError) MaterialTheme.colorScheme.errorContainer else MemorixPersonalStart.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(14.dp),
+            )
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Text(
+            text = message,
+            color = if (isError) MaterialTheme.colorScheme.onErrorContainer else MemorixPersonalStart,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+private fun createPersonalPendingCameraCapture(context: Context): PendingCameraCapture {
+    val outputDir = File(context.cacheDir, "memorix-camera").apply { mkdirs() }
+    val fileName = "camera_${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))}_${UUID.randomUUID()}.jpg"
+    val outputFile = File(outputDir, fileName)
+    val outputUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", outputFile)
+    return PendingCameraCapture(
+        outputFile = outputFile,
+        outputUri = outputUri,
+        authority = "${context.packageName}.fileprovider",
+    )
 }

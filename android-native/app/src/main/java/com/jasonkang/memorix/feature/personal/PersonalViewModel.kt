@@ -1,5 +1,6 @@
 package com.jasonkang.memorix.feature.personal
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jasonkang.memorix.core.database.entity.AlbumSummary
@@ -38,6 +39,9 @@ class PersonalViewModel @Inject constructor(
             query = controls.query,
             isAlbumGridMode = controls.isAlbumGridMode,
             summary = "앨범 ${albums.size}개 · 미디어 ${items.size}개",
+            isImporting = controls.isImporting,
+            importMessage = controls.importMessage,
+            errorMessage = controls.errorMessage,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -58,6 +62,36 @@ class PersonalViewModel @Inject constructor(
             albumRepository.createAlbum(title.trim(), memo.trim())
         }
     }
+
+    fun importMedia(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            controls.update { it.copy(isImporting = true, importMessage = null, errorMessage = null) }
+            runCatching { mediaRepository.importMedia(uris, MediaSpace.PERSONAL) }
+                .onSuccess { importedIds ->
+                    controls.update {
+                        it.copy(
+                            isImporting = false,
+                            importMessage = "Personal에 ${importedIds.size}개 항목을 등록했습니다.",
+                            errorMessage = null,
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    controls.update {
+                        it.copy(
+                            isImporting = false,
+                            importMessage = null,
+                            errorMessage = error.message ?: "Personal 등록에 실패했습니다.",
+                        )
+                    }
+                }
+        }
+    }
+
+    fun consumeImportMessages() {
+        controls.update { it.copy(importMessage = null, errorMessage = null) }
+    }
 }
 
 data class PersonalUiState(
@@ -67,9 +101,15 @@ data class PersonalUiState(
     val query: String = "",
     val isAlbumGridMode: Boolean = false,
     val summary: String = "앨범 0개 · 미디어 0개",
+    val isImporting: Boolean = false,
+    val importMessage: String? = null,
+    val errorMessage: String? = null,
 )
 
 private data class PersonalControls(
     val query: String = "",
     val isAlbumGridMode: Boolean = false,
+    val isImporting: Boolean = false,
+    val importMessage: String? = null,
+    val errorMessage: String? = null,
 )
