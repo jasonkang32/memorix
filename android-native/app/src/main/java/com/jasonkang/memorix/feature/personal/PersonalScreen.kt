@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AddAPhoto
 import androidx.compose.material.icons.outlined.Collections
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.GridView
@@ -61,6 +62,7 @@ fun PersonalScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showCreateDialog by remember { mutableStateOf(false) }
+    var searching by remember { mutableStateOf(false) }
 
     if (showCreateDialog) {
         AlbumEditDialog(
@@ -83,24 +85,28 @@ fun PersonalScreen(
             isAlbumGridMode = uiState.isAlbumGridMode,
             onToggleAlbumGrid = viewModel::toggleAlbumGrid,
             onCreateAlbum = { showCreateDialog = true },
+            onSearch = { searching = true },
+            onAddMedia = { },
             modifier = Modifier.padding(top = 12.dp),
         )
 
-        OutlinedTextField(
-            value = uiState.query,
-            onValueChange = viewModel::updateQuery,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Personal 검색") },
-            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-            singleLine = true,
-            shape = RoundedCornerShape(16.dp),
-        )
-
-        Text(
-            text = uiState.summary,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        if (searching) {
+            OutlinedTextField(
+                value = uiState.query,
+                onValueChange = viewModel::updateQuery,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Personal 검색...") },
+                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                trailingIcon = {
+                    IconButton(onClick = {
+                        viewModel.updateQuery("")
+                        searching = false
+                    }) { Icon(Icons.Outlined.Search, contentDescription = null) }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+            )
+        }
 
         if (uiState.albums.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -124,11 +130,6 @@ fun PersonalScreen(
         }
 
         if (uiState.isAlbumGridMode) {
-            Text(
-                text = "앨범 목록",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
             if (uiState.albums.isEmpty()) {
                 EmptyPersonalAlbumsBlock()
             } else {
@@ -144,11 +145,6 @@ fun PersonalScreen(
                 }
             }
         } else {
-            Text(
-                text = "개인 타임라인",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
             if (uiState.filteredItems.isEmpty()) {
                 EmptyPersonalTimelineBlock(hasQuery = uiState.query.isNotBlank())
             } else {
@@ -167,11 +163,13 @@ private fun PersonalTopBar(
     isAlbumGridMode: Boolean,
     onToggleAlbumGrid: () -> Unit,
     onCreateAlbum: () -> Unit,
+    onSearch: () -> Unit,
+    onAddMedia: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -193,6 +191,9 @@ private fun PersonalTopBar(
                 )
             }
             Spacer(modifier = Modifier.weight(1f))
+            IconButton(onClick = onSearch) {
+                Icon(Icons.Outlined.Search, contentDescription = "검색")
+            }
             IconButton(onClick = onToggleAlbumGrid) {
                 Icon(
                     imageVector = if (isAlbumGridMode) Icons.Outlined.ViewAgenda else Icons.Outlined.GridView,
@@ -202,41 +203,9 @@ private fun PersonalTopBar(
             IconButton(onClick = onCreateAlbum) {
                 Icon(Icons.Outlined.CreateNewFolder, contentDescription = null)
             }
-        }
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Brush.linearGradient(listOf(MemorixPersonalStart, MemorixPersonalEnd)))
-                    .padding(20.dp),
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Collections,
-                            contentDescription = null,
-                            tint = Color.White,
-                        )
-                        Text(
-                            text = "개인 보관함",
-                            color = Color.White,
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.ExtraBold,
-                        )
-                    }
-                    Text(
-                        text = "여행, 가족, 추억 사진을 앨범과 타임라인으로 감성 있게 정리하는 Personal 공간",
-                        color = Color.White.copy(alpha = 0.92f),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+            if (!isAlbumGridMode) {
+                IconButton(onClick = onAddMedia) {
+                    Icon(Icons.Outlined.AddAPhoto, contentDescription = "미디어 추가")
                 }
             }
         }

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -211,28 +212,6 @@ fun HomeScreen(
         }
 
         item {
-            QuickImportSection(
-                isImporting = uiState.isImporting,
-                onPickMedia = {
-                    pickerLauncher.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
-                    )
-                },
-                onPickDateRange = {
-                    dateRangePickerLauncher.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
-                    )
-                },
-                onOpenCamera = {
-                    val pending = createPendingCameraCapture(context)
-                    pendingCameraCapture = pending
-                    cameraLauncher.launch(pending.outputUri)
-                },
-                onOpenDocument = { documentLauncher.launch("*/*") },
-            )
-        }
-
-        item {
             SectionTitle(title = "최근 등록")
         }
         if (uiState.items.isEmpty()) {
@@ -244,13 +223,19 @@ fun HomeScreen(
                 RecentRow(items = uiState.items.take(8), onMediaClick = onMediaClick)
             }
             item {
-                SectionTitle(title = "전체 보관함")
+                SectionTitle(title = "최근 30일 활동")
             }
-            items(groupLibraryRows(uiState.items)) { rowItems ->
-                LibraryGridRow(
-                    items = rowItems,
-                    onMediaClick = onMediaClick,
-                )
+            item {
+                ActivityChart(items = uiState.items)
+            }
+            item {
+                SectionTitle(title = "저장 공간")
+            }
+            item {
+                StorageUsageCard(summary = summary)
+            }
+            item {
+                TypeBreakdown(summary = summary)
             }
             item {
                 Spacer(modifier = Modifier.height(96.dp))
@@ -619,6 +604,135 @@ private fun RecentRow(
                 )
             }
             Spacer(modifier = Modifier.width(2.dp))
+        }
+    }
+}
+
+@Composable
+private fun ActivityChart(items: List<MediaItemEntity>) {
+    val dailyCounts = remember(items) {
+        val today = LocalDate.now()
+        val counts = items.groupingBy {
+            Instant.ofEpochMilli(it.takenAt).atZone(ZoneId.systemDefault()).toLocalDate()
+        }.eachCount()
+        (29 downTo 0).map { offset ->
+            val date = today.minusDays(offset.toLong())
+            counts[date] ?: 0
+        }
+    }
+    val maxCount = dailyCounts.maxOrNull()?.coerceAtLeast(1) ?: 1
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(140.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(horizontal = 14.dp, vertical = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        dailyCounts.forEach { count ->
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                contentAlignment = Alignment.BottomCenter,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(((count.toFloat() / maxCount) * 90).coerceAtLeast(if (count > 0) 8f else 2f).dp)
+                        .clip(RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp))
+                        .background(if (count > 0) MemorixPrimary else MaterialTheme.colorScheme.surfaceVariant),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StorageUsageCard(summary: HomeSummary) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("전체 용량", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.weight(1f))
+                Text(summary.storageLabel, color = MemorixSecondary, fontWeight = FontWeight.ExtraBold)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StorageChip("사진", summary.photoCount, MemorixWorkStart)
+                StorageChip("영상", summary.videoCount, MemorixPersonalStart)
+                StorageChip("문서", summary.documentCount, MemorixWarning)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TypeBreakdown(summary: HomeSummary) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        BreakdownCard(
+            modifier = Modifier.weight(1f),
+            title = "Work",
+            total = summary.workCount,
+            photo = summary.workPhotoCount,
+            video = summary.workVideoCount,
+            gradient = Brush.linearGradient(listOf(MemorixWorkStart, MemorixWorkEnd)),
+        )
+        BreakdownCard(
+            modifier = Modifier.weight(1f),
+            title = "Personal",
+            total = summary.personalCount,
+            photo = summary.personalPhotoCount,
+            video = summary.personalVideoCount,
+            gradient = Brush.linearGradient(listOf(MemorixPersonalStart, MemorixPersonalEnd)),
+        )
+    }
+}
+
+@Composable
+private fun StorageChip(label: String, count: Int, color: Color) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(color.copy(alpha = 0.14f))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    ) {
+        Text("$label $count", style = MaterialTheme.typography.labelSmall, color = color, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun BreakdownCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    total: Int,
+    photo: Int,
+    video: Int,
+    gradient: Brush,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(gradient)
+            .padding(16.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+            Text("${total}개", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+            Text("사진 $photo · 영상 $video", color = Color.White.copy(alpha = 0.92f), style = MaterialTheme.typography.bodySmall)
         }
     }
 }

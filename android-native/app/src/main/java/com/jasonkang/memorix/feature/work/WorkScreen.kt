@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AddAPhoto
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Photo
 import androidx.compose.material.icons.outlined.PictureAsPdf
@@ -34,6 +35,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -57,9 +61,7 @@ fun WorkScreen(
     viewModel: WorkViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val photoCount = uiState.items.count { it.mediaType == MediaType.PHOTO }
-    val videoCount = uiState.items.count { it.mediaType == MediaType.VIDEO }
-    val documentCount = uiState.items.count { it.mediaType == MediaType.DOCUMENT }
+    var searching by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -67,17 +69,29 @@ fun WorkScreen(
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        WorkTopBar(modifier = Modifier.padding(top = 12.dp))
-
-        OutlinedTextField(
-            value = uiState.query,
-            onValueChange = viewModel::updateQuery,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Work 검색") },
-            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-            singleLine = true,
-            shape = RoundedCornerShape(16.dp),
+        WorkTopBar(
+            modifier = Modifier.padding(top = 12.dp),
+            filterActive = uiState.selectedMediaType != null,
+            onSearch = { searching = true },
         )
+
+        if (searching) {
+            OutlinedTextField(
+                value = uiState.query,
+                onValueChange = viewModel::updateQuery,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Work 검색...") },
+                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                trailingIcon = {
+                    IconButton(onClick = {
+                        viewModel.updateQuery("")
+                        searching = false
+                    }) { Icon(Icons.Outlined.Tune, contentDescription = null) }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+            )
+        }
 
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -88,47 +102,6 @@ fun WorkScreen(
             WorkMediaFilterChip("영상", uiState.selectedMediaType == MediaType.VIDEO) { viewModel.updateMediaType(MediaType.VIDEO) }
             WorkMediaFilterChip("문서", uiState.selectedMediaType == MediaType.DOCUMENT) { viewModel.updateMediaType(MediaType.DOCUMENT) }
         }
-
-        Text(
-            text = uiState.summary,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            WorkQuickStat(
-                modifier = Modifier.weight(1f),
-                label = "사진",
-                value = "${photoCount}개",
-                icon = Icons.Outlined.Photo,
-                tint = MemorixWorkStart,
-            )
-            WorkQuickStat(
-                modifier = Modifier.weight(1f),
-                label = "영상",
-                value = "${videoCount}개",
-                icon = Icons.Outlined.VideoLibrary,
-                tint = MemorixPrimary,
-            )
-            WorkQuickStat(
-                modifier = Modifier.weight(1f),
-                label = "문서",
-                value = "${documentCount}개",
-                icon = Icons.Outlined.Description,
-                tint = MemorixWarning,
-            )
-        }
-
-        WorkReportCard()
-
-        Text(
-            text = if (uiState.filteredItems.isEmpty()) "최근 업무 보관함" else "업무 타임라인",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-        )
 
         if (uiState.filteredItems.isEmpty()) {
             EmptyWorkBlock(hasQuery = uiState.query.isNotBlank())
@@ -143,10 +116,14 @@ fun WorkScreen(
 }
 
 @Composable
-private fun WorkTopBar(modifier: Modifier = Modifier) {
+private fun WorkTopBar(
+    modifier: Modifier = Modifier,
+    filterActive: Boolean,
+    onSearch: () -> Unit,
+) {
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -168,48 +145,28 @@ private fun WorkTopBar(modifier: Modifier = Modifier) {
                 )
             }
             Spacer(modifier = Modifier.weight(1f))
-            IconButton(onClick = {}) {
-                Icon(Icons.Outlined.PictureAsPdf, contentDescription = null)
+            IconButton(onClick = onSearch) {
+                Icon(Icons.Outlined.Search, contentDescription = "검색")
             }
             IconButton(onClick = {}) {
-                Icon(Icons.Outlined.Tune, contentDescription = null)
+                Icon(Icons.Outlined.PictureAsPdf, contentDescription = "보고서 생성")
             }
-        }
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Brush.linearGradient(listOf(MemorixWorkStart, MemorixWorkEnd)))
-                    .padding(20.dp),
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Work,
-                            contentDescription = null,
-                            tint = Color.White,
-                        )
-                        Text(
-                            text = "업무 보관함",
-                            color = Color.White,
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.ExtraBold,
-                        )
-                    }
-                    Text(
-                        text = "현장 사진, 영상, 문서를 타임라인 중심으로 빠르게 정리하는 Work 공간",
-                        color = Color.White.copy(alpha = 0.92f),
-                        style = MaterialTheme.typography.bodyMedium,
+            Box {
+                IconButton(onClick = {}) {
+                    Icon(Icons.Outlined.Tune, contentDescription = "필터")
+                }
+                if (filterActive) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 8.dp, end = 8.dp)
+                            .size(8.dp)
+                            .background(MemorixPrimary, shape = androidx.compose.foundation.shape.CircleShape),
                     )
                 }
+            }
+            IconButton(onClick = {}) {
+                Icon(Icons.Outlined.AddAPhoto, contentDescription = "미디어 추가")
             }
         }
     }
