@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.jasonkang.memorix.BuildConfig
 import com.jasonkang.memorix.feature.auth.AuthUiState
 
 data class SettingsRowModel(
@@ -139,7 +140,7 @@ fun SettingsScreen(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("앱 정보", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                SettingsInfoRow(SettingsRowModel(Icons.Outlined.Info, "Memorix", "로컬 중심 사진·영상·문서 보관함"))
+                SettingsInfoRow(SettingsRowModel(Icons.Outlined.Info, "버전", BuildConfig.VERSION_NAME))
             }
         }
     }
