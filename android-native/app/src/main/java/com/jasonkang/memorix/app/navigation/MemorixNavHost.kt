@@ -2,6 +2,7 @@ package com.jasonkang.memorix.app.navigation
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -18,6 +19,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavType
@@ -34,6 +37,9 @@ import com.jasonkang.memorix.core.designsystem.theme.MemorixPrimary
 import com.jasonkang.memorix.core.designsystem.theme.MemorixSurfaceDark
 import com.jasonkang.memorix.core.designsystem.theme.MemorixSurfaceLight
 import com.jasonkang.memorix.feature.albums.AlbumDetailScreen
+import com.jasonkang.memorix.feature.auth.AuthViewModel
+import com.jasonkang.memorix.feature.auth.LockScreen
+import com.jasonkang.memorix.core.auth.AuthGateState
 import com.jasonkang.memorix.feature.detail.MediaDetailScreen
 import com.jasonkang.memorix.feature.home.HomeScreen
 import com.jasonkang.memorix.feature.personal.PersonalScreen
@@ -62,6 +68,37 @@ private object Routes {
 
 @Composable
 fun MemorixNavHost() {
+    val authViewModel: AuthViewModel = hiltViewModel()
+    val authState by authViewModel.uiState.collectAsStateWithLifecycle()
+
+    when (authState.gateState) {
+        AuthGateState.Checking -> {
+            androidx.compose.foundation.layout.Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(androidx.compose.material3.MaterialTheme.colorScheme.background),
+            )
+        }
+        AuthGateState.Locked -> {
+            LockScreen(
+                state = authState,
+                onDigit = authViewModel::appendPinDigit,
+                onDelete = authViewModel::deletePinDigit,
+                onBiometricSuccess = authViewModel::unlockByBiometric,
+                onBiometricError = authViewModel::showError,
+            )
+        }
+        AuthGateState.Unlocked -> {
+            MemorixUnlockedNavHost(authViewModel = authViewModel, authState = authState)
+        }
+    }
+}
+
+@Composable
+private fun MemorixUnlockedNavHost(
+    authViewModel: AuthViewModel,
+    authState: com.jasonkang.memorix.feature.auth.AuthUiState,
+) {
     val navController = rememberNavController()
     val destinations = listOf(
         TopLevelDestination(Routes.Home, "Home") { Icon(Icons.Outlined.Home, contentDescription = null) },
@@ -135,7 +172,16 @@ fun MemorixNavHost() {
             composable(Routes.Search) {
                 SearchScreen(onMediaClick = { mediaId -> navController.navigate(Routes.mediaDetail(mediaId)) })
             }
-            composable(Routes.Settings) { SettingsScreen() }
+            composable(Routes.Settings) {
+                SettingsScreen(
+                    authState = authState,
+                    onSetPin = authViewModel::setPin,
+                    onClearPin = authViewModel::clearPin,
+                    onBiometricEnabledChange = authViewModel::setBiometricEnabled,
+                    onPersonalLockEnabledChange = authViewModel::setPersonalLockEnabled,
+                    onConsumeMessages = authViewModel::consumeMessages,
+                )
+            }
             composable(
                 route = Routes.AlbumDetail,
                 arguments = listOf(navArgument("albumId") { type = NavType.LongType }),
