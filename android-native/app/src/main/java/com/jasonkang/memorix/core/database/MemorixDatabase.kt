@@ -23,7 +23,7 @@ import com.jasonkang.memorix.core.database.entity.TagEntity
         MediaTagCrossRef::class,
         MediaSearchEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(DatabaseConverters::class)

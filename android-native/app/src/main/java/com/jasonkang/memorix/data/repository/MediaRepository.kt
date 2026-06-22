@@ -14,6 +14,14 @@ interface MediaRepository {
     fun observeMedia(mediaId: Long): Flow<MediaItemEntity?>
     suspend fun previewImport(uris: List<Uri>, dateRange: ImportDateRange? = null): ImportPreview
     suspend fun importMedia(uris: List<Uri>, space: MediaSpace = MediaSpace.WORK): List<Long>
+    suspend fun importMediaWithMetadata(
+        uris: List<Uri>,
+        space: MediaSpace,
+        note: String,
+        tagIds: List<Long>,
+        countryCode: String,
+        region: String,
+    ): List<Long>
     suspend fun updateMedia(item: MediaItemEntity)
     suspend fun rebuildSearchIndex(item: MediaItemEntity)
 }

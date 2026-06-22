@@ -46,6 +46,7 @@ import com.jasonkang.memorix.feature.personal.PersonalScreen
 import com.jasonkang.memorix.feature.search.SearchScreen
 import com.jasonkang.memorix.feature.settings.SettingsScreen
 import com.jasonkang.memorix.feature.work.WorkScreen
+import com.jasonkang.memorix.feature.work.compose.MediaComposeScreen
 
 private data class TopLevelDestination(
     val route: String,
@@ -61,6 +62,7 @@ private object Routes {
     const val Settings = "settings"
     const val AlbumDetail = "album/{albumId}"
     const val MediaDetail = "media/{mediaId}"
+    const val WorkCompose = "work/compose"
 
     fun albumDetail(albumId: Long) = "album/$albumId"
     fun mediaDetail(mediaId: Long) = "media/$mediaId"
@@ -161,7 +163,18 @@ private fun MemorixUnlockedNavHost(
                 )
             }
             composable(Routes.Work) {
-                WorkScreen(onMediaClick = { mediaId -> navController.navigate(Routes.mediaDetail(mediaId)) })
+                WorkScreen(
+                    onMediaClick = { mediaId -> navController.navigate(Routes.mediaDetail(mediaId)) },
+                    onNavigateToCompose = { navController.navigate(Routes.WorkCompose) },
+                )
+            }
+            composable(Routes.WorkCompose) {
+                MediaComposeScreen(
+                    onBack = { navController.popBackStack() },
+                    onSaveComplete = {
+                        navController.popBackStack(Routes.Work, inclusive = false)
+                    },
+                )
             }
             composable(Routes.Personal) {
                 PersonalScreen(

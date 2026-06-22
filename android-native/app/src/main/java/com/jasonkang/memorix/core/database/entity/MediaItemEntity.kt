@@ -20,6 +20,8 @@ data class MediaItemEntity(
     val mimeType: String = "",
     val width: Int? = null,
     val height: Int? = null,
+    val countryCode: String = "",
+    val region: String = "",
     val ocrText: String = "",
     val isFavorite: Boolean = false,
     val isArchived: Boolean = false,

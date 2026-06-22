@@ -2,7 +2,9 @@ package com.jasonkang.memorix.data.repository
 
 import android.net.Uri
 import com.jasonkang.memorix.core.database.dao.MediaDao
+import com.jasonkang.memorix.core.database.dao.TagDao
 import com.jasonkang.memorix.core.database.entity.MediaItemEntity
+import com.jasonkang.memorix.core.database.entity.MediaTagCrossRef
 import com.jasonkang.memorix.core.database.entity.MediaSearchEntity
 import com.jasonkang.memorix.core.database.entity.MediaSpace
 import com.jasonkang.memorix.core.media.DateRangeImportSupport
@@ -22,6 +24,7 @@ import kotlinx.coroutines.flow.Flow
 @Singleton
 class DefaultMediaRepository @Inject constructor(
     private val mediaDao: MediaDao,
+    private val tagDao: TagDao,
     private val mediaImportManager: MediaImportManager,
 ) : MediaRepository {
     override fun observeLibrary(): Flow<List<MediaItemEntity>> = mediaDao.observeLibrary()
@@ -93,7 +96,17 @@ class DefaultMediaRepository @Inject constructor(
         )
     }
 
-    override suspend fun importMedia(uris: List<Uri>, space: MediaSpace): List<Long> {
+    override suspend fun importMedia(uris: List<Uri>, space: MediaSpace): List<Long> =
+        importMediaWithMetadata(uris, space, note = "", tagIds = emptyList(), countryCode = "", region = "")
+
+    override suspend fun importMediaWithMetadata(
+        uris: List<Uri>,
+        space: MediaSpace,
+        note: String,
+        tagIds: List<Long>,
+        countryCode: String,
+        region: String,
+    ): List<Long> {
         if (uris.isEmpty()) return emptyList()
         val imported = mediaImportManager.importAll(
             uris.map { uri -> MediaImportManager.ImportRequest(uri = uri) }
@@ -106,7 +119,9 @@ class DefaultMediaRepository @Inject constructor(
                 filePath = result.originalFile.absolutePath,
                 thumbPath = result.thumbnailFile?.absolutePath,
                 title = MediaImportSupport.inferTitle(result.displayName),
-                note = "",
+                note = note,
+                countryCode = countryCode,
+                region = region,
                 takenAt = result.takenAt ?: now,
                 createdAt = now,
                 fileSizeKb = result.fileSizeKb,
@@ -116,6 +131,11 @@ class DefaultMediaRepository @Inject constructor(
                 height = result.height,
             )
             val id = mediaDao.insert(item)
+            if (tagIds.isNotEmpty()) {
+                tagDao.replaceMediaTags(tagIds.map { tagId ->
+                    MediaTagCrossRef(mediaId = id, tagId = tagId)
+                })
+            }
             rebuildSearchIndex(item.copy(id = id))
             id
         }

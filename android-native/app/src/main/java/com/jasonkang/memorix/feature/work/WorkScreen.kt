@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,13 +26,11 @@ import androidx.compose.material.icons.outlined.Photo
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material.icons.outlined.Work
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -41,7 +38,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,18 +49,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.core.content.FileProvider
 import com.jasonkang.memorix.core.database.entity.MediaType
-import com.jasonkang.memorix.core.media.CameraCaptureSupport
-import com.jasonkang.memorix.core.media.PendingCameraCapture
 import com.jasonkang.memorix.core.designsystem.theme.MemorixBorderLight
 import com.jasonkang.memorix.core.designsystem.theme.MemorixPrimary
-import com.jasonkang.memorix.core.designsystem.theme.MemorixWarning
 import com.jasonkang.memorix.core.designsystem.theme.MemorixWorkEnd
 import com.jasonkang.memorix.core.designsystem.theme.MemorixWorkStart
-import com.jasonkang.memorix.feature.home.component.MediaGrid
+import com.jasonkang.memorix.core.media.CameraCaptureSupport
+import com.jasonkang.memorix.core.media.PendingCameraCapture
+import com.jasonkang.memorix.feature.work.compose.PendingMediaHolder
+import com.jasonkang.memorix.feature.work.timeline.WorkTimeline
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -74,6 +70,7 @@ import java.util.UUID
 @Composable
 fun WorkScreen(
     onMediaClick: (Long) -> Unit,
+    onNavigateToCompose: () -> Unit,
     viewModel: WorkViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -81,25 +78,32 @@ fun WorkScreen(
     var searching by remember { mutableStateOf(false) }
     var showRegisterSheet by remember { mutableStateOf(false) }
     var pendingCameraCapture by remember { mutableStateOf<PendingCameraCapture?>(null) }
+
     val mediaPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 30),
-    ) { uris -> viewModel.importMedia(uris) }
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            PendingMediaHolder.set(uris)
+            onNavigateToCompose()
+        }
+    }
     val documentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents(),
-    ) { uris -> viewModel.importMedia(uris) }
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            PendingMediaHolder.set(uris)
+            onNavigateToCompose()
+        }
+    }
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture(),
     ) { success ->
         val uris = CameraCaptureSupport.resolveCapturedUris(success, pendingCameraCapture)
         if (!success) pendingCameraCapture?.outputFile?.delete()
         pendingCameraCapture = null
-        viewModel.importMedia(uris)
-    }
-
-    LaunchedEffect(uiState.importMessage, uiState.errorMessage) {
-        if (uiState.importMessage != null || uiState.errorMessage != null) {
-            kotlinx.coroutines.delay(2_500)
-            viewModel.consumeImportMessages()
+        if (uris.isNotEmpty()) {
+            PendingMediaHolder.set(uris)
+            onNavigateToCompose()
         }
     }
 
@@ -136,16 +140,6 @@ fun WorkScreen(
             onAddMedia = { showRegisterSheet = true },
         )
 
-        uiState.importMessage?.let { message ->
-            WorkStatusBanner(message = message, isError = false)
-        }
-        uiState.errorMessage?.let { message ->
-            WorkStatusBanner(message = message, isError = true)
-        }
-        if (uiState.isImporting) {
-            WorkStatusBanner(message = "등록 중입니다...", isError = false)
-        }
-
         if (searching) {
             OutlinedTextField(
                 value = uiState.query,
@@ -177,7 +171,7 @@ fun WorkScreen(
         if (uiState.filteredItems.isEmpty()) {
             EmptyWorkBlock(hasQuery = uiState.query.isNotBlank())
         } else {
-            MediaGrid(
+            WorkTimeline(
                 items = uiState.filteredItems,
                 modifier = Modifier.weight(1f),
                 onItemClick = { item -> onMediaClick(item.id) },
@@ -254,82 +248,14 @@ private fun WorkMediaFilterChip(
         onClick = onClick,
         label = { Text(label) },
         colors = if (selected) {
-            androidx.compose.material3.AssistChipDefaults.assistChipColors(
+            AssistChipDefaults.assistChipColors(
                 containerColor = MemorixPrimary.copy(alpha = 0.16f),
                 labelColor = MemorixPrimary,
             )
         } else {
-            androidx.compose.material3.AssistChipDefaults.assistChipColors()
+            AssistChipDefaults.assistChipColors()
         },
     )
-}
-
-@Composable
-private fun WorkQuickStat(
-    label: String,
-    value: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    tint: Color,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 0.dp,
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            horizontalAlignment = Alignment.Start,
-        ) {
-            Icon(icon, contentDescription = null, tint = tint)
-            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
-            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun WorkReportCard() {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        tonalElevation = 0.dp,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    text = "보고서 생성",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    text = "출장보고서, 사진대지, 현장 기록용 출력을 준비하는 영역",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(MemorixPrimary.copy(alpha = 0.12f), RoundedCornerShape(16.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Outlined.PictureAsPdf, contentDescription = null, tint = MemorixPrimary)
-            }
-        }
-    }
 }
 
 @Composable
@@ -413,26 +339,6 @@ private fun WorkRegisterDialog(
             Button(onClick = onDismiss) { Text("닫기") }
         },
     )
-}
-
-@Composable
-private fun WorkStatusBanner(message: String, isError: Boolean) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                color = if (isError) MaterialTheme.colorScheme.errorContainer else MemorixPrimary.copy(alpha = 0.12f),
-                shape = RoundedCornerShape(14.dp),
-            )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-    ) {
-        Text(
-            text = message,
-            color = if (isError) MaterialTheme.colorScheme.onErrorContainer else MemorixPrimary,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-    }
 }
 
 private fun createWorkPendingCameraCapture(context: Context): PendingCameraCapture {
