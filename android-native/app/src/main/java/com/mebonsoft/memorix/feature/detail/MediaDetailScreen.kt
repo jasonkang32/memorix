@@ -86,6 +86,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -142,6 +144,7 @@ fun MediaDetailScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showAddMediaDialog by remember { mutableStateOf(false) }
     var mediaPendingRemoval by remember { mutableStateOf<MediaItemEntity?>(null) }
+    var fullscreenPreviewItem by remember { mutableStateOf<MediaItemEntity?>(null) }
 
     LaunchedEffect(uiState.selectedTagIds) {
         if (!tagsDirty) selectedTagIds = uiState.selectedTagIds
@@ -252,11 +255,18 @@ fun MediaDetailScreen(
                     MediaPreview(
                         item = relatedItem,
                         orderLabel = "$order/${uiState.relatedItems.size}",
+                        onFullscreenClick = { fullscreenPreviewItem = relatedItem },
                         onRemove = { mediaPendingRemoval = relatedItem },
                     )
                 }
             } else {
-                item { MediaPreview(item = item, orderLabel = null) }
+                item {
+                    MediaPreview(
+                        item = item,
+                        orderLabel = null,
+                        onFullscreenClick = { fullscreenPreviewItem = item },
+                    )
+                }
             }
             item { AddMediaButton(onClick = { showAddMediaDialog = true }) }
             item { MediaMeta(item = item, countryCode = countryCode, region = region) }
@@ -333,6 +343,13 @@ fun MediaDetailScreen(
                 }
             }
         }
+    }
+
+    fullscreenPreviewItem?.let { previewItem ->
+        FullscreenMediaPreviewDialog(
+            item = previewItem,
+            onDismiss = { fullscreenPreviewItem = null },
+        )
     }
 
     if (showDatePicker) {
@@ -435,9 +452,61 @@ fun MediaDetailScreen(
 }
 
 @Composable
+private fun FullscreenMediaPreviewDialog(
+    item: MediaItemEntity,
+    onDismiss: () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .clickable(onClick = onDismiss),
+        ) {
+            AsyncImage(
+                model = File(item.thumbPath ?: item.filePath),
+                contentDescription = item.title.ifBlank { "이미지 크게 보기" },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                contentScale = ContentScale.Fit,
+            )
+            if (item.mediaType == MediaType.VIDEO) {
+                Icon(
+                    Icons.Filled.PlayCircle,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.78f),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(72.dp),
+                )
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(20.dp)
+                    .size(44.dp)
+                    .background(Color.Black.copy(alpha = 0.58f), CircleShape),
+            ) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = "크게 보기 닫기",
+                    tint = Color.White,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun MediaPreview(
     item: MediaItemEntity,
     orderLabel: String?,
+    onFullscreenClick: (() -> Unit)? = null,
     onRemove: (() -> Unit)? = null,
 ) {
     if (item.mediaType == MediaType.DOCUMENT) {
@@ -485,16 +554,23 @@ private fun MediaPreview(
                 fontWeight = FontWeight.SemiBold,
             )
         }
-        Icon(
-            Icons.Outlined.Fullscreen,
-            contentDescription = null,
-            tint = Color.White,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(10.dp)
-                .background(Color.Black.copy(alpha = 0.54f), RoundedCornerShape(8.dp))
-                .padding(6.dp),
-        )
+        if (isFullscreenPreviewAvailable(item.mediaType) && onFullscreenClick != null) {
+            IconButton(
+                onClick = onFullscreenClick,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(10.dp)
+                    .size(40.dp)
+                    .background(Color.Black.copy(alpha = 0.54f), RoundedCornerShape(8.dp)),
+            ) {
+                Icon(
+                    Icons.Outlined.Fullscreen,
+                    contentDescription = "이미지 크게 보기",
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
         if (item.mediaType == MediaType.VIDEO) {
             Icon(Icons.Filled.PlayCircle, contentDescription = null, tint = Color.White.copy(alpha = 0.76f), modifier = Modifier.align(Alignment.Center).size(52.dp))
         }
