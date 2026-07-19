@@ -33,7 +33,6 @@ import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.GridView
 
 import androidx.compose.material.icons.outlined.Photo
-import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.ViewAgenda
@@ -278,23 +277,6 @@ private fun PersonalTopBar(
                 Spacer(modifier = Modifier.weight(1f))
                 IconButton(onClick = onSearch) {
                     Icon(Icons.Outlined.Search, contentDescription = "검색", tint = MemorixInk)
-                }
-                IconButton(onClick = {}) {
-                    Icon(Icons.Outlined.PictureAsPdf, contentDescription = "보고서 생성", tint = MemorixMuted)
-                }
-                Box {
-                    IconButton(onClick = {}) {
-                        Icon(Icons.Outlined.Tune, contentDescription = "필터", tint = if (filterActive) MemorixPrimary else MemorixMuted)
-                    }
-                    if (filterActive) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(top = 8.dp, end = 8.dp)
-                                .size(8.dp)
-                                .background(MemorixPrimary, shape = androidx.compose.foundation.shape.CircleShape),
-                        )
-                    }
                 }
                 IconButton(onClick = onAddMedia) {
                     Icon(Icons.Outlined.AddAPhoto, contentDescription = "미디어 추가", tint = MemorixPrimary)

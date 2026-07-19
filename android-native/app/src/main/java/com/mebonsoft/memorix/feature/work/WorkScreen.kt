@@ -24,7 +24,6 @@ import androidx.compose.material.icons.outlined.AddAPhoto
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Photo
 import androidx.compose.material.icons.outlined.LockOpen
-import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Work
@@ -314,9 +313,6 @@ private fun WorkTopBar(
                 Spacer(modifier = Modifier.weight(1f))
                 IconButton(onClick = onSearch) {
                     Icon(Icons.Outlined.Search, contentDescription = "검색", tint = MemorixInk)
-                }
-                IconButton(onClick = {}) {
-                    Icon(Icons.Outlined.PictureAsPdf, contentDescription = "보고서 생성", tint = MemorixMuted)
                 }
                 Box {
                     IconButton(onClick = onFilter) {
