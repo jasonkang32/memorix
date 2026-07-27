@@ -97,23 +97,6 @@ class MediaComposeViewModelTest {
     }
 
     @Test
-    fun `quick labels create reusable selected tags`() = runTest(dispatcher) {
-        val tagDao = FakeTagDao()
-        val viewModel = MediaComposeViewModel(SavedStateHandle(), FakeMediaRepository(), tagDao)
-        advanceUntilIdle()
-
-        viewModel.toggleQuickLabel("회의")
-        advanceUntilIdle()
-        viewModel.toggleQuickLabel("회의")
-        advanceUntilIdle()
-        viewModel.toggleQuickLabel("회의")
-        advanceUntilIdle()
-
-        assertEquals(listOf("회의"), viewModel.uiState.value.availableTags.map { it.label })
-        assertEquals(listOf(1L), viewModel.uiState.value.selectedTagIds)
-    }
-
-    @Test
     fun `setMediaUris exposes first photo or video creation time as event date`() = runTest(dispatcher) {
         val uri = Uri.parse("content://memorix/photo/created-at")
         val repository = FakeMediaRepository(

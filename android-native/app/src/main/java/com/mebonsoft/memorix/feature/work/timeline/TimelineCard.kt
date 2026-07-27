@@ -40,6 +40,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.mebonsoft.memorix.core.database.entity.MediaItemEntity
 import com.mebonsoft.memorix.core.database.entity.MediaType
@@ -53,6 +54,10 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private val headerDateFormatter = DateTimeFormatter.ofPattern("M월 d일 (E) HH:mm")
+
+private val workListDateTextSize = 14.3.sp
+private val workListMetaTextSize = 14.3.sp
+private val workListBodyTextSize = 15.6.sp
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -86,14 +91,14 @@ fun TimelineCard(
                 if (representative.region.isNotBlank() || representative.countryCode.isNotBlank()) {
                     Text(
                         text = buildLocationLabel(representative.countryCode, representative.region),
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = workListBodyTextSize),
                         fontWeight = FontWeight.SemiBold,
                         color = MemorixInk,
                     )
                 }
                 Text(
                     text = formatTakenAt(representative.takenAt),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = workListDateTextSize),
                     color = MemorixMuted,
                 )
             }
@@ -119,6 +124,7 @@ fun TimelineCard(
                                     .background(MemorixPrimary.copy(alpha = 0.10f), RoundedCornerShape(999.dp))
                                     .padding(horizontal = 8.dp, vertical = 4.dp),
                                 style = MaterialTheme.typography.labelSmall,
+                                fontSize = workListMetaTextSize,
                                 color = MemorixPrimary,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -129,7 +135,7 @@ fun TimelineCard(
                 if (representative.note.isNotBlank()) {
                     Text(
                         text = representative.note,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = workListBodyTextSize),
                         color = MemorixInk,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -156,7 +162,7 @@ fun TimelineCard(
                                 Spacer(Modifier.width(3.dp))
                                 Text(
                                     "${photoCount}장",
-                                    style = MaterialTheme.typography.labelSmall,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = workListMetaTextSize),
                                     color = MemorixMuted,
                                 )
                             }
@@ -172,7 +178,7 @@ fun TimelineCard(
                                 Spacer(Modifier.width(3.dp))
                                 Text(
                                     "${videoCount}개",
-                                    style = MaterialTheme.typography.labelSmall,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = workListMetaTextSize),
                                     color = MemorixMuted,
                                 )
                             }
@@ -188,7 +194,7 @@ fun TimelineCard(
                                 Spacer(Modifier.width(3.dp))
                                 Text(
                                     "문서 ${documentCount}개",
-                                    style = MaterialTheme.typography.labelSmall,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = workListMetaTextSize),
                                     color = MemorixMuted,
                                 )
                             }

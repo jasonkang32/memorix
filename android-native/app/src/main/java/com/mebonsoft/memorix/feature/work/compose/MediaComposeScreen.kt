@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Event
@@ -94,6 +95,7 @@ fun MediaComposeScreen(
     val profile = composeSpaceProfile(space)
     val context = LocalContext.current
     var showDiscardDialog by remember { mutableStateOf(false) }
+    val canSave = uiState.mediaUris.isNotEmpty() && !uiState.isSaving
 
     val addDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents(),
@@ -131,16 +133,27 @@ fun MediaComposeScreen(
     if (showDiscardDialog) {
         AlertDialog(
             onDismissRequest = { showDiscardDialog = false },
-            title = { Text("작성 취소") },
-            text = { Text("작성 중인 내용이 사라집니다. 나가시겠습니까?") },
+            title = { Text("작성 내용을 저장할까요?") },
+            text = { Text("뒤로 가기 전에 지금 입력한 내용을 저장할 수 있습니다.") },
             confirmButton = {
-                TextButton(onClick = { showDiscardDialog = false; onBack() }) {
-                    Text("나가기")
+                TextButton(
+                    enabled = canSave,
+                    onClick = {
+                        showDiscardDialog = false
+                        viewModel.save()
+                    },
+                ) {
+                    Text("저장")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDiscardDialog = false }) {
-                    Text("계속 작성")
+                Row {
+                    TextButton(onClick = { showDiscardDialog = false; onBack() }) {
+                        Text("저장 안 함")
+                    }
+                    TextButton(onClick = { showDiscardDialog = false }) {
+                        Text("계속 작성")
+                    }
                 }
             },
         )
@@ -158,25 +171,18 @@ fun MediaComposeScreen(
                     }
                 },
                 actions = {
-                    Button(
+                    IconButton(
                         onClick = viewModel::save,
-                        enabled = uiState.mediaUris.isNotEmpty() && !uiState.isSaving,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MemorixPrimary,
-                            contentColor = androidx.compose.ui.graphics.Color.White,
-                            disabledContainerColor = MemorixPrimary.copy(alpha = 0.32f),
-                        ),
-                        shape = RoundedCornerShape(999.dp),
-                        modifier = Modifier.padding(end = 8.dp),
+                        enabled = canSave,
                     ) {
                         if (uiState.isSaving) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                color = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(18.dp),
+                                color = MemorixPrimary,
                                 strokeWidth = 2.dp,
                             )
                         } else {
-                            Text("저장")
+                            Icon(Icons.Outlined.Check, contentDescription = "저장", tint = MemorixPrimary)
                         }
                     }
                 },
@@ -236,15 +242,6 @@ fun MediaComposeScreen(
                 shape = RoundedCornerShape(14.dp),
             )
 
-            QuickTagSections(
-                sections = profile.quickSections,
-                selectedLabels = uiState.availableTags
-                    .filter { tag -> tag.id in uiState.selectedTagIds }
-                    .map { it.label }
-                    .toSet(),
-                onToggle = viewModel::toggleQuickLabel,
-            )
-
             SectionLabel(profile.tagLabel)
             TagInputRow(
                 value = uiState.newTagText,
@@ -261,7 +258,13 @@ fun MediaComposeScreen(
                     FilterChip(
                         selected = selected,
                         onClick = { viewModel.toggleTag(tag.id) },
-                        label = { Text(tag.label) },
+                        label = {
+                            Text(
+                                text = tag.label,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = MemorixPrimary.copy(alpha = 0.16f),
                             selectedLabelColor = MemorixPrimary,
@@ -346,55 +349,6 @@ private fun EventDateCard(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun QuickTagSections(
-    sections: List<ComposeQuickSection>,
-    selectedLabels: Set<String>,
-    onToggle: (String) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        sections.forEach { section ->
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = section.title,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MemorixInk,
-                    )
-                }
-                Text(
-                    text = section.description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MemorixMuted,
-                )
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    section.labels.forEach { label ->
-                        val selected = label in selectedLabels
-                        FilterChip(
-                            selected = selected,
-                            onClick = { onToggle(label) },
-                            label = { Text(label) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MemorixPrimary.copy(alpha = 0.16f),
-                                selectedLabelColor = MemorixPrimary,
-                            ),
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
 @Composable
 private fun TagInputRow(
     value: String,
@@ -411,8 +365,8 @@ private fun TagInputRow(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier.weight(1f),
-            placeholder = { Text("태그 직접 입력") },
-            prefix = { Text("#") },
+            placeholder = { Text("태그 직접 입력", fontSize = 14.sp) },
+            prefix = { Text("#", fontSize = 14.sp, fontWeight = FontWeight.Medium) },
             singleLine = true,
             enabled = enabled,
             shape = RoundedCornerShape(14.dp),
@@ -430,6 +384,7 @@ private fun TagInputRow(
                 text = "추가",
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                fontSize = 14.sp,
             )
         }
     }

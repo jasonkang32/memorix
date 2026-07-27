@@ -8,50 +8,49 @@ import org.junit.Test
 class EntitlementPolicyTest {
 
     @Test
-    fun freeTierAllowsRegistrationWhenCurrentCountIsBelowLimit() {
+    fun freeTierAllowsRegistrationWithoutLocalCountLimit() {
         val decision = EntitlementPolicy.canRegisterNewItem(
             entitlement = ProEntitlement.Free,
-            currentRegistrationCount = 299,
+            currentRegistrationCount = 100_000,
         )
 
         assertEquals(FeatureGateDecision.Allowed, decision)
     }
 
     @Test
-    fun freeTierBlocksRegistrationWhenLimitHasBeenReached() {
-        val decision = EntitlementPolicy.canRegisterNewItem(
-            entitlement = ProEntitlement.Free,
-            currentRegistrationCount = 300,
-        )
-
-        assertEquals(
-            FeatureGateDecision.UpgradeRequired(
-                feature = ProFeature.UnlimitedItems,
-                reason = "무료 버전은 최대 300개 등록까지 사용할 수 있습니다.",
-            ),
-            decision,
-        )
-    }
-
-    @Test
-    fun proTierAllowsRegistrationBeyondFreeLimit() {
+    fun proTierAlsoAllowsRegistrationWithoutLocalCountLimit() {
         val decision = EntitlementPolicy.canRegisterNewItem(
             entitlement = ProEntitlement.ProLifetime,
-            currentRegistrationCount = 10_000,
+            currentRegistrationCount = 100_000,
         )
 
         assertEquals(FeatureGateDecision.Allowed, decision)
+    }
+
+    @Test
+    fun freeTierKeepsBasicLocalFeaturesOpen() {
+        val freeFeatures = listOf(
+            ProFeature.BasicSharing,
+            ProFeature.BasicHiddenItems,
+            ProFeature.DocumentImport,
+        )
+
+        freeFeatures.forEach { feature ->
+            val decision = EntitlementPolicy.canUseFeature(ProEntitlement.Free, feature)
+            assertEquals("$feature should stay available to Free users", FeatureGateDecision.Allowed, decision)
+        }
     }
 
     @Test
     fun proOnlyFeaturesRequireUpgradeForFreeUsers() {
         val proOnly = listOf(
-            ProFeature.DocumentImport,
-            ProFeature.OcrSearch,
-            ProFeature.HiddenVault,
+            ProFeature.PrivateVaultProtection,
             ProFeature.BackupRestore,
-            ProFeature.TagManagement,
+            ProFeature.OcrSearch,
             ProFeature.AdvancedFilters,
+            ProFeature.TagManagement,
+            ProFeature.PdfExport,
+            ProFeature.BatchShare,
         )
 
         proOnly.forEach { feature ->

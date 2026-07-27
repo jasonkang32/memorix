@@ -1,6 +1,5 @@
 package com.mebonsoft.memorix.core.monetization
 
-const val FreeRegistrationLimit = 300
 const val ProLifetimeProductId = "memorix_pro_lifetime"
 
 enum class ProEntitlement {
@@ -10,14 +9,18 @@ enum class ProEntitlement {
 
 enum class ProFeature(
     val displayName: String,
+    val requiresPro: Boolean,
 ) {
-    UnlimitedItems("항목 무제한"),
-    DocumentImport("문서/PDF 등록"),
-    OcrSearch("OCR 검색"),
-    HiddenVault("숨긴 보관함"),
-    BackupRestore("백업/복원"),
-    TagManagement("태그 관리"),
-    AdvancedFilters("고급 필터"),
+    BasicSharing("기본 사진 공유", false),
+    BasicHiddenItems("기본 숨김", false),
+    DocumentImport("문서/PDF 등록", false),
+    PrivateVaultProtection("프라이빗 보관함 보호", true),
+    BackupRestore("백업/복구", true),
+    OcrSearch("OCR 검색", true),
+    AdvancedFilters("고급 필터", true),
+    TagManagement("태그 관리", true),
+    PdfExport("PDF 내보내기", true),
+    BatchShare("묶음 공유", true),
 }
 
 sealed interface FeatureGateDecision {
@@ -33,30 +36,19 @@ object EntitlementPolicy {
     fun canRegisterNewItem(
         entitlement: ProEntitlement,
         currentRegistrationCount: Int,
-    ): FeatureGateDecision {
-        if (entitlement == ProEntitlement.ProLifetime) return FeatureGateDecision.Allowed
-        return if (currentRegistrationCount < FreeRegistrationLimit) {
-            FeatureGateDecision.Allowed
-        } else {
-            FeatureGateDecision.UpgradeRequired(
-                feature = ProFeature.UnlimitedItems,
-                reason = "무료 버전은 최대 ${FreeRegistrationLimit}개 등록까지 사용할 수 있습니다.",
-            )
-        }
-    }
+    ): FeatureGateDecision = FeatureGateDecision.Allowed
 
     fun canUseFeature(
         entitlement: ProEntitlement,
         feature: ProFeature,
     ): FeatureGateDecision {
-        return if (entitlement == ProEntitlement.ProLifetime) {
-            FeatureGateDecision.Allowed
-        } else {
-            FeatureGateDecision.UpgradeRequired(
-                feature = feature,
-                reason = "${feature.displayName} 기능은 Memorix Pro에서 사용할 수 있습니다.",
-            )
+        if (!feature.requiresPro || entitlement == ProEntitlement.ProLifetime) {
+            return FeatureGateDecision.Allowed
         }
+        return FeatureGateDecision.UpgradeRequired(
+            feature = feature,
+            reason = "${feature.displayName} 기능은 Memorix Pro에서 사용할 수 있습니다.",
+        )
     }
 
     fun canReadExistingData(

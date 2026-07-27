@@ -1,5 +1,8 @@
 package com.mebonsoft.memorix.feature.settings
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -24,6 +27,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.Save
+import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material.icons.outlined.Translate
@@ -46,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -53,6 +58,10 @@ import androidx.compose.ui.unit.dp
 import com.mebonsoft.memorix.BuildConfig
 import com.mebonsoft.memorix.core.locale.AppLanguage
 import com.mebonsoft.memorix.core.locale.MemorixStrings
+import com.mebonsoft.memorix.core.monetization.ProBillingState
+import com.mebonsoft.memorix.core.monetization.ProEntitlement
+import com.mebonsoft.memorix.core.monetization.ProFeature
+import com.mebonsoft.memorix.core.monetization.ProUpgradeContent
 import com.mebonsoft.memorix.feature.auth.AuthUiState
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -68,6 +77,8 @@ fun SettingsScreen(
     authState: AuthUiState,
     backupState: SettingsBackupUiState,
     settingsState: SettingsUiState,
+    billingState: ProBillingState,
+    entitlement: ProEntitlement,
     strings: MemorixStrings,
     onSetPin: (String, String) -> Unit,
     onClearPin: () -> Unit,
@@ -81,13 +92,20 @@ fun SettingsScreen(
     onOpenHiddenVault: () -> Unit,
     onDeleteTag: (Long) -> Unit,
     onLanguageSelected: (AppLanguage) -> Unit,
+    onBuyPro: (Activity) -> Unit,
+    onRestoreProPurchase: () -> Unit,
+    onConsumeBillingMessages: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val isPro = entitlement == ProEntitlement.ProLifetime
     var showPinDialog by remember { mutableStateOf(false) }
     var showTagManagementDialog by remember { mutableStateOf(false) }
     var tagPendingDelete by remember { mutableStateOf<ManagedTagRow?>(null) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showStorageDialog by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
+    var showProDialog by remember { mutableStateOf(false) }
+    var pendingProFeature by remember { mutableStateOf<ProFeature?>(null) }
     val backupExportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/zip"),
     ) { uri ->
@@ -114,6 +132,13 @@ fun SettingsScreen(
         }
     }
 
+    LaunchedEffect(billingState.infoMessage, billingState.errorMessage) {
+        if (billingState.infoMessage != null || billingState.errorMessage != null) {
+            kotlinx.coroutines.delay(2_500)
+            onConsumeBillingMessages()
+        }
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -134,14 +159,26 @@ fun SettingsScreen(
             }
         }
 
-        if (authState.infoMessage != null || authState.errorMessage != null || backupState.infoMessage != null || backupState.errorMessage != null) {
+        item {
+            ProOverviewCard(
+                entitlement = entitlement,
+                billingState = billingState,
+                onClick = { showProDialog = true },
+                onBuy = { context.findActivity()?.let(onBuyPro) },
+                onRestore = onRestoreProPurchase,
+            )
+        }
+
+        if (authState.infoMessage != null || authState.errorMessage != null || backupState.infoMessage != null || backupState.errorMessage != null || billingState.infoMessage != null || billingState.errorMessage != null) {
             item {
                 MessageCard(
                     message = authState.infoMessage
                         ?: authState.errorMessage
                         ?: backupState.infoMessage
-                        ?: backupState.errorMessage.orEmpty(),
-                    isError = authState.errorMessage != null || backupState.errorMessage != null,
+                        ?: backupState.errorMessage
+                        ?: billingState.infoMessage
+                        ?: billingState.errorMessage.orEmpty(),
+                    isError = authState.errorMessage != null || backupState.errorMessage != null || billingState.errorMessage != null,
                 )
             }
         }
@@ -189,8 +226,8 @@ fun SettingsScreen(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(strings.contentManagementSection, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 SettingsInfoRow(
-                    item = SettingsRowModel(Icons.Outlined.Tag, strings.tagManagementTitle, strings.tagManagementSubtitle),
-                    onClick = { showTagManagementDialog = true },
+                    item = SettingsRowModel(Icons.Outlined.Tag, strings.tagManagementTitle, if (isPro) strings.tagManagementSubtitle else "Pro · ${strings.tagManagementSubtitle}"),
+                    onClick = { if (isPro) showTagManagementDialog = true else pendingProFeature = ProFeature.TagManagement },
                 )
                 SettingsInfoRow(
                     item = SettingsRowModel(Icons.Outlined.Translate, strings.languageTitle, "${settingsState.selectedLanguage.nativeLabel} · ${strings.languageSubtitle}"),
@@ -202,8 +239,9 @@ fun SettingsScreen(
                 )
                 BackupRestoreSettingsSection(
                     state = backupState,
-                    onBackup = { backupExportLauncher.launch(backupFileName()) },
-                    onRestore = { backupRestoreLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
+                    isPro = isPro,
+                    onBackup = { if (isPro) backupExportLauncher.launch(backupFileName()) else pendingProFeature = ProFeature.BackupRestore },
+                    onRestore = { if (isPro) backupRestoreLauncher.launch(arrayOf("application/zip", "application/octet-stream")) else pendingProFeature = ProFeature.BackupRestore },
                 )
                 SettingsDangerRow(
                     title = strings.resetAllDataTitle,
@@ -284,6 +322,23 @@ fun SettingsScreen(
         )
     }
 
+    pendingProFeature?.let { feature ->
+        val copy = ProUpgradeContent.forFeature(feature)
+        SimpleInfoDialog(
+            title = copy.title,
+            body = copy.body,
+            onDismiss = { pendingProFeature = null },
+        )
+    }
+
+    if (showProDialog) {
+        SimpleInfoDialog(
+            title = "Memorix Pro",
+            body = "무료 버전은 등록 수량 제한 없이 로컬 기록을 자유롭게 보관합니다.\n\nPro는 오래 쓰는 사용자를 위한 고급 기능입니다.\n• 백업/복구\n• 프라이빗 보관함 보호\n• OCR 검색\n• 고급 검색/필터\n• 사진 여러 장 PDF 내보내기\n• 묶음/ZIP 공유\n\n기본 사진 공유와 문서 등록은 무료로 유지합니다.",
+            onDismiss = { showProDialog = false },
+        )
+    }
+
     if (showResetDialog) {
         ResetAllDataDialog(
             isWorking = backupState.isWorking,
@@ -291,6 +346,16 @@ fun SettingsScreen(
             onConfirm = {
                 showResetDialog = false
                 onResetAllData()
+            },
+        )
+    }
+
+    if (showPinDialog) {
+        PinSetupDialog(
+            onDismiss = { showPinDialog = false },
+            onSave = { pin, confirm ->
+                onSetPin(pin, confirm)
+                showPinDialog = false
             },
         )
     }
@@ -373,6 +438,62 @@ private fun LanguageSelectionDialog(
             TextButton(onClick = onDismiss) { Text("닫기") }
         },
     )
+}
+
+@Composable
+private fun ProOverviewCard(
+    entitlement: ProEntitlement,
+    billingState: ProBillingState,
+    onClick: () -> Unit,
+    onBuy: () -> Unit,
+    onRestore: () -> Unit,
+) {
+    val isPro = entitlement == ProEntitlement.ProLifetime
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .background(
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(20.dp),
+            )
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Outlined.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(if (isPro) "Memorix Pro 활성화됨" else "Memorix Pro", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "무료는 등록 제한 없이, Pro는 백업·프라이빗 보관함·OCR·PDF 내보내기 중심",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Text(
+            if (isPro) "백업·복구, 태그 관리, OCR, PDF 내보내기, 묶음 공유를 사용할 수 있습니다." else "기본 사진 공유와 문서 등록은 무료로 유지하고, 여러 장 묶음 공유와 기록 PDF 생성은 Pro 가치로 분리합니다.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (!isPro) {
+                Button(onClick = onBuy, enabled = !billingState.isWorking, modifier = Modifier.weight(1f)) {
+                    Text(billingState.productPrice?.let { "Pro 구매 · $it" } ?: "Pro 구매")
+                }
+                OutlinedButton(onClick = onRestore, enabled = !billingState.isWorking, modifier = Modifier.weight(1f)) {
+                    Text("구매 복원")
+                }
+            } else {
+                OutlinedButton(onClick = onRestore, enabled = !billingState.isWorking, modifier = Modifier.fillMaxWidth()) {
+                    Text("구매 내역 다시 확인")
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -525,6 +646,7 @@ private fun ResetAllDataDialog(
 @Composable
 private fun BackupRestoreSettingsSection(
     state: SettingsBackupUiState,
+    isPro: Boolean,
     onBackup: () -> Unit,
     onRestore: () -> Unit,
 ) {
@@ -544,7 +666,7 @@ private fun BackupRestoreSettingsSection(
         ) {
             Icon(imageVector = Icons.Outlined.Save, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("백업 · 복구", style = MaterialTheme.typography.titleSmall)
+                Text(if (isPro) "백업 · 복구" else "Pro 백업 · 복구", style = MaterialTheme.typography.titleSmall)
                 Text(
                     text = "전체 ${formatBytes(state.managedStorageUsage.totalBytes)} · 미디어 ${formatBytes(state.managedStorageUsage.mediaBytes)} · DB ${formatBytes(state.managedStorageUsage.databaseBytes)}",
                     style = MaterialTheme.typography.bodySmall,
@@ -620,6 +742,12 @@ private fun PinSetupDialog(
             }
         },
     )
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 private fun backupFileName(): String {

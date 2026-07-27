@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.mebonsoft.memorix.core.database.entity.MediaItemEntity
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixInk
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixPrimary
@@ -25,6 +26,8 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private val sectionFormatter = DateTimeFormatter.ofPattern("yyyy년 M월 d일")
+private val timelineHeaderDateTextSize = 18.2.sp
+private val timelineHeaderCountTextSize = 14.3.sp
 
 internal data class TimelineSection(
     val dateLabel: String,
@@ -87,7 +90,7 @@ private fun TimelineDateHeader(label: String, count: Int) {
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelLarge,
+            style = MaterialTheme.typography.labelLarge.copy(fontSize = timelineHeaderDateTextSize),
             color = MemorixInk,
         )
         Spacer(modifier = Modifier.width(8.dp))
@@ -99,7 +102,7 @@ private fun TimelineDateHeader(label: String, count: Int) {
         ) {
             Text(
                 text = count.toString(),
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = timelineHeaderCountTextSize),
                 color = MemorixPrimary,
             )
         }

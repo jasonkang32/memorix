@@ -2,6 +2,10 @@ package com.mebonsoft.memorix.di
 
 import com.mebonsoft.memorix.core.backup.MemorixBackupManager
 import com.mebonsoft.memorix.core.backup.MemorixBackupOperations
+import com.mebonsoft.memorix.core.monetization.AndroidProBillingRepository
+import com.mebonsoft.memorix.core.monetization.DataStoreProEntitlementRepository
+import com.mebonsoft.memorix.core.monetization.ProBillingRepository
+import com.mebonsoft.memorix.core.monetization.ProEntitlementRepository
 import com.mebonsoft.memorix.data.repository.AlbumRepository
 import com.mebonsoft.memorix.data.repository.DefaultAlbumRepository
 import com.mebonsoft.memorix.data.repository.DefaultMediaRepository
@@ -32,4 +36,12 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindMemorixBackupOperations(impl: MemorixBackupManager): MemorixBackupOperations
+
+    @Binds
+    @Singleton
+    abstract fun bindProEntitlementRepository(impl: DataStoreProEntitlementRepository): ProEntitlementRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindProBillingRepository(impl: AndroidProBillingRepository): ProBillingRepository
 }

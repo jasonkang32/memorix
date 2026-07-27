@@ -1,6 +1,7 @@
 package com.mebonsoft.memorix.feature.detail
 
 import com.mebonsoft.memorix.core.database.entity.MediaItemEntity
+import com.mebonsoft.memorix.core.database.entity.MediaSpace
 import com.mebonsoft.memorix.core.database.entity.MediaType
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -50,6 +51,45 @@ class MediaEditorSupportTest {
 
         assertEquals(listOf(1L, 2L), related.map { it.id })
     }
+
+    @Test
+    fun workDeleteTargets_returnsWholeWorkGroup() {
+        val selected = mediaItem(id = 1, takenAt = 1_000L, note = "증빙", region = "서울")
+        val sibling = mediaItem(id = 2, takenAt = 2_000L, note = "증빙", region = "서울")
+        val trashed = mediaItem(id = 3, takenAt = 3_000L, note = "증빙", region = "서울", isTrashed = true)
+
+        val targets = MediaEditorSupport.workDeleteTargets(
+            selected = selected,
+            relatedItems = listOf(selected, sibling, trashed, sibling),
+        )
+
+        assertEquals(listOf(1L, 2L), targets.map { it.id })
+    }
+
+    @Test
+    fun workDeleteTargets_keepsPersonalDeleteSingleMediaOnly() {
+        val selected = mediaItem(
+            id = 1,
+            takenAt = 1_000L,
+            note = "개인",
+            region = "서울",
+            space = MediaSpace.PERSONAL,
+        )
+        val sibling = mediaItem(
+            id = 2,
+            takenAt = 2_000L,
+            note = "개인",
+            region = "서울",
+            space = MediaSpace.PERSONAL,
+        )
+
+        val targets = MediaEditorSupport.workDeleteTargets(
+            selected = selected,
+            relatedItems = listOf(selected, sibling),
+        )
+
+        assertEquals(listOf(1L), targets.map { it.id })
+    }
 }
 
 private fun mediaItem(
@@ -57,8 +97,11 @@ private fun mediaItem(
     takenAt: Long,
     note: String,
     region: String,
+    space: MediaSpace = MediaSpace.WORK,
+    isTrashed: Boolean = false,
 ): MediaItemEntity = MediaItemEntity(
     id = id,
+    space = space,
     mediaType = MediaType.PHOTO,
     filePath = "/tmp/$id.jpg",
     title = "item $id",
@@ -66,4 +109,5 @@ private fun mediaItem(
     region = region,
     takenAt = takenAt,
     createdAt = takenAt,
+    isTrashed = isTrashed,
 )

@@ -13,6 +13,8 @@ import com.mebonsoft.memorix.core.database.entity.MediaItemEntity
 import com.mebonsoft.memorix.core.database.entity.TagEntity
 import com.mebonsoft.memorix.data.repository.AlbumRepository
 import com.mebonsoft.memorix.data.repository.MediaRepository
+import com.mebonsoft.memorix.core.monetization.ProEntitlement
+import com.mebonsoft.memorix.core.monetization.ProEntitlementRepository
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
@@ -41,6 +43,7 @@ class MediaDetailViewModel @Inject constructor(
     private val mediaRepository: MediaRepository,
     private val albumRepository: AlbumRepository,
     private val tagDao: TagDao,
+    private val entitlementRepository: ProEntitlementRepository,
     @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
     private val mediaId: Long = checkNotNull(savedStateHandle["mediaId"])
@@ -53,20 +56,27 @@ class MediaDetailViewModel @Inject constructor(
         item to item?.let { MediaEditorSupport.relatedWorkItems(it, libraryItems) }.orEmpty()
     }
 
+    private val entitlementWithTransient = combine(
+        entitlementRepository.entitlement,
+        transientState,
+    ) { entitlement, transient -> entitlement to transient }
+
     val uiState: StateFlow<MediaDetailUiState> = combine(
         itemWithRelatedItems,
         albumRepository.observeAlbumSummaries(),
         tagDao.observeTags(),
         tagDao.observeTagsForMedia(mediaId),
-        transientState,
-    ) { itemBundle, albums, tags, selectedTags, transient ->
+        entitlementWithTransient,
+    ) { itemBundle, albums, tags, selectedTags, entitlementBundle ->
         val (item, relatedItems) = itemBundle
+        val (entitlement, transient) = entitlementBundle
         MediaDetailUiState(
             item = item,
             relatedItems = relatedItems,
             albums = albums,
             availableTags = tags,
             selectedTagIds = selectedTags.map { it.id },
+            entitlement = entitlement,
             isSaving = transient.isSaving,
             isLocating = transient.isLocating,
             isOcrRunning = transient.isOcrRunning,
@@ -196,7 +206,7 @@ class MediaDetailViewModel @Inject constructor(
             transientState.update {
                 it.copy(
                     isLocating = false,
-                    message = if (result == null) "사진에 GPS 정보가 없습니다." else "GPS 위치를 입력했습니다.",
+                    message = if (result == null) null else "GPS 위치를 입력했습니다.",
                 )
             }
         }
@@ -248,18 +258,16 @@ class MediaDetailViewModel @Inject constructor(
         continuation.invokeOnCancellation { recognizer.close() }
     }
 
-    fun deleteMedia(item: MediaItemEntity) {
+    fun deleteMedia(item: MediaItemEntity, relatedItems: List<MediaItemEntity> = emptyList()) {
         viewModelScope.launch {
             transientState.update { it.copy(isSaving = true, message = null) }
             runCatching {
-                withContext(Dispatchers.IO) {
-                    File(item.filePath).delete()
-                    item.thumbPath?.let { File(it).delete() }
-                }
-                mediaRepository.updateMedia(item.copy(isTrashed = true))
-                tagDao.clearMediaTags(item.id)
-            }.onSuccess {
-                transientState.update { it.copy(isSaving = false, deleted = true, message = "미디어를 삭제했습니다.") }
+                val targets = MediaEditorSupport.workDeleteTargets(item, relatedItems)
+                trashMediaItems(targets)
+                targets.size
+            }.onSuccess { deletedCount ->
+                val message = if (deletedCount > 1) "Work 항목을 삭제했습니다." else "미디어를 삭제했습니다."
+                transientState.update { it.copy(isSaving = false, deleted = true, message = message) }
             }.onFailure { error ->
                 transientState.update { it.copy(isSaving = false, message = error.message ?: "삭제에 실패했습니다.") }
             }
@@ -270,12 +278,7 @@ class MediaDetailViewModel @Inject constructor(
         viewModelScope.launch {
             transientState.update { it.copy(isSaving = true, message = null) }
             runCatching {
-                withContext(Dispatchers.IO) {
-                    File(item.filePath).delete()
-                    item.thumbPath?.let { File(it).delete() }
-                }
-                mediaRepository.updateMedia(item.copy(isTrashed = true))
-                tagDao.clearMediaTags(item.id)
+                trashMediaItems(listOf(item))
             }.onSuccess {
                 transientState.update {
                     it.copy(
@@ -290,6 +293,17 @@ class MediaDetailViewModel @Inject constructor(
         }
     }
 
+    private suspend fun trashMediaItems(items: List<MediaItemEntity>) {
+        items.distinctBy { it.id }.forEach { target ->
+            withContext(Dispatchers.IO) {
+                File(target.filePath).delete()
+                target.thumbPath?.let { File(it).delete() }
+            }
+            mediaRepository.updateMedia(target.copy(isTrashed = true))
+            tagDao.clearMediaTags(target.id)
+        }
+    }
+
     fun consumeMessage() {
         transientState.update { it.copy(message = null) }
     }
@@ -301,6 +315,7 @@ data class MediaDetailUiState(
     val albums: List<AlbumSummary> = emptyList(),
     val availableTags: List<TagEntity> = emptyList(),
     val selectedTagIds: List<Long> = emptyList(),
+    val entitlement: ProEntitlement = ProEntitlement.Free,
     val isSaving: Boolean = false,
     val isLocating: Boolean = false,
     val isOcrRunning: Boolean = false,

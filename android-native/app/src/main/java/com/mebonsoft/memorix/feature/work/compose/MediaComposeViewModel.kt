@@ -65,7 +65,7 @@ class MediaComposeViewModel @Inject constructor(
             isSaving = form.isSaving,
             saveComplete = form.saveComplete,
             errorMessage = form.errorMessage,
-            hasContent = form.note.isNotBlank() || form.selectedTagIds.isNotEmpty() || form.newTagText.isNotBlank()
+            hasContent = form.mediaUris.isNotEmpty() || form.note.isNotBlank() || form.selectedTagIds.isNotEmpty() || form.newTagText.isNotBlank()
                 || form.countryCode.isNotBlank() || form.region.isNotBlank(),
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, ComposeUiState())
@@ -112,34 +112,6 @@ class MediaComposeViewModel @Inject constructor(
                 state.selectedTagIds + tagId
             }
             state.copy(selectedTagIds = updated)
-        }
-    }
-
-    fun toggleQuickLabel(label: String) {
-        val normalizedLabel = label.trim().trimStart('#')
-        if (normalizedLabel.isBlank()) return
-        viewModelScope.launch {
-            val key = normalizeTagKey(normalizedLabel)
-            val existing = allTags.value.firstOrNull {
-                it.key == key || it.label.equals(normalizedLabel, ignoreCase = true)
-            }
-            val tagId = existing?.id ?: tagDao.insert(
-                TagEntity(
-                    key = key,
-                    label = normalizedLabel,
-                    colorHex = defaultTagColor(normalizedLabel),
-                    iconName = "tag",
-                    isCustom = true,
-                )
-            )
-            formState.update { state ->
-                val updated = if (tagId in state.selectedTagIds) {
-                    state.selectedTagIds - tagId
-                } else {
-                    state.selectedTagIds + tagId
-                }
-                state.copy(selectedTagIds = updated)
-            }
         }
     }
 

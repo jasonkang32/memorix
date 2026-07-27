@@ -1,6 +1,7 @@
 package com.mebonsoft.memorix.feature.detail
 
 import com.mebonsoft.memorix.core.database.entity.MediaItemEntity
+import com.mebonsoft.memorix.core.database.entity.MediaSpace
 
 object MediaEditorSupport {
     fun applyDraft(
@@ -30,6 +31,17 @@ object MediaEditorSupport {
                     detailGroupKey(candidate) == selectedKey
             }
             .sortedWith(compareBy<MediaItemEntity> { it.createdAt }.thenBy { it.id })
+    }
+
+    fun workDeleteTargets(
+        selected: MediaItemEntity,
+        relatedItems: List<MediaItemEntity>,
+    ): List<MediaItemEntity> = if (selected.space == MediaSpace.WORK) {
+        (relatedItems.ifEmpty { listOf(selected) })
+            .filter { !it.isTrashed }
+            .distinctBy { it.id }
+    } else {
+        listOf(selected)
     }
 
     private fun detailGroupKey(item: MediaItemEntity): String =
