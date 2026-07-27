@@ -2,6 +2,8 @@ package com.mebonsoft.memorix.di
 
 import com.mebonsoft.memorix.core.backup.MemorixBackupManager
 import com.mebonsoft.memorix.core.backup.MemorixBackupOperations
+import com.mebonsoft.memorix.core.cloud.CloudSyncOperations
+import com.mebonsoft.memorix.core.cloud.GoogleDriveSyncManager
 import com.mebonsoft.memorix.core.monetization.AndroidProBillingRepository
 import com.mebonsoft.memorix.core.monetization.DataStoreProEntitlementRepository
 import com.mebonsoft.memorix.core.monetization.ProBillingRepository
@@ -36,6 +38,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindMemorixBackupOperations(impl: MemorixBackupManager): MemorixBackupOperations
+
+    @Binds
+    @Singleton
+    abstract fun bindCloudSyncOperations(impl: GoogleDriveSyncManager): CloudSyncOperations
 
     @Binds
     @Singleton

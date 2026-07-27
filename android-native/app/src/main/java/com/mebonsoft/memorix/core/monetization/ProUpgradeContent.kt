@@ -13,6 +13,10 @@ object ProUpgradeContent {
             title = "백업/복구는 Memorix Pro에서",
             body = "무료 버전은 등록 수량 제한 없이 내 폰에 기록을 보관할 수 있습니다. Pro에서는 휴대폰 변경, 재설치, 실수로 인한 데이터 손실에 대비해 DB와 사진·영상·문서 파일을 함께 백업하고 복구할 수 있습니다.",
         )
+        ProFeature.CloudSync -> ProUpgradeCopy(
+            title = "Google Drive 동기화는 Memorix Pro에서",
+            body = "Pro에서는 내 Google Drive 앱 전용 공간에 Memorix 백업을 저장하고, 새 폰이나 재설치 후 최신 백업으로 복구할 수 있습니다. 비밀 보관함 복구 키도 백업에 포함되어 숨긴 파일까지 이어집니다.",
+        )
         ProFeature.TagManagement -> ProUpgradeCopy(
             title = "태그 관리는 Memorix Pro에서",
             body = "기본 태그 입력과 검색은 무료로 사용할 수 있습니다. Pro에서는 태그 이름 변경, 삭제, 정리, 자주 쓰는 태그 관리로 기록이 많아져도 깔끔하게 유지할 수 있습니다.",

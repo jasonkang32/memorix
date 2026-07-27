@@ -263,6 +263,8 @@ private class FakeBackupOperations(
 ) : MemorixBackupOperations {
     override suspend fun calculateManagedStorageUsage(): ManagedStorageUsage = usage
     override suspend fun exportBackup(destination: Uri): ManagedStorageUsage = usage
+    override suspend fun exportBackupToFile(destination: java.io.File): ManagedStorageUsage = usage
     override suspend fun restoreBackup(source: Uri): ManagedStorageUsage = usage
+    override suspend fun restoreBackupFromFile(source: java.io.File): ManagedStorageUsage = usage
     override suspend fun resetAllData(): ManagedStorageUsage = ManagedStorageUsage(mediaBytes = 0L, databaseBytes = 0L)
 }

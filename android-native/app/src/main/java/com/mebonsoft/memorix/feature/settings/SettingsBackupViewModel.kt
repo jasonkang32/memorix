@@ -1,10 +1,13 @@
 package com.mebonsoft.memorix.feature.settings
 
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mebonsoft.memorix.core.backup.ManagedStorageUsage
 import com.mebonsoft.memorix.core.backup.MemorixBackupOperations
+import com.mebonsoft.memorix.core.cloud.CloudSyncOperations
+import com.mebonsoft.memorix.core.cloud.DriveCloudSyncStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.text.DecimalFormat
 import javax.inject.Inject
@@ -16,18 +19,112 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class SettingsBackupViewModel @Inject constructor(
     private val backupManager: MemorixBackupOperations,
+    private val cloudSync: CloudSyncOperations,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsBackupUiState())
     val uiState: StateFlow<SettingsBackupUiState> = _uiState
 
     init {
         refreshManagedStorageUsage()
+        refreshCloudStatus()
     }
 
     fun refreshManagedStorageUsage() {
         viewModelScope.launch {
             runCatching { backupManager.calculateManagedStorageUsage() }
                 .onSuccess { usage -> _uiState.update { it.copy(managedStorageUsage = usage) } }
+        }
+    }
+
+    fun createDriveSignInIntent(): Intent = cloudSync.createSignInIntent()
+
+    fun onDriveSignInResult(data: Intent?) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(cloudSyncStatus = it.cloudSyncStatus.copy(isWorking = true), errorMessage = null, infoMessage = null) }
+            runCatching { cloudSync.handleSignInResult(data) }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            cloudSyncStatus = it.cloudSyncStatus.copy(isWorking = false),
+                            errorMessage = error.message ?: "Google Drive 연결에 실패했습니다.",
+                        )
+                    }
+                }
+                .onSuccess { status ->
+                    _uiState.update {
+                        it.copy(
+                            cloudSyncStatus = status.copy(isWorking = false),
+                            infoMessage = "Google Drive를 연결했습니다.",
+                        )
+                    }
+                }
+        }
+    }
+
+    fun refreshCloudStatus() {
+        viewModelScope.launch {
+            runCatching { cloudSync.refreshStatus() }
+                .onSuccess { status -> _uiState.update { it.copy(cloudSyncStatus = status) } }
+        }
+    }
+
+    fun uploadCloudBackup() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(cloudSyncStatus = it.cloudSyncStatus.copy(isWorking = true), errorMessage = null, infoMessage = null) }
+            runCatching { cloudSync.uploadCloudBackup() }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            cloudSyncStatus = it.cloudSyncStatus.copy(isWorking = false),
+                            errorMessage = error.message ?: "Google Drive 백업에 실패했습니다.",
+                        )
+                    }
+                }
+                .onSuccess { status ->
+                    _uiState.update {
+                        it.copy(
+                            cloudSyncStatus = status.copy(isWorking = false),
+                            infoMessage = "Google Drive 백업을 완료했습니다.",
+                        )
+                    }
+                }
+        }
+    }
+
+    fun restoreLatestCloudBackup() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(cloudSyncStatus = it.cloudSyncStatus.copy(isWorking = true), errorMessage = null, infoMessage = null) }
+            runCatching { cloudSync.restoreLatestCloudBackup() }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            cloudSyncStatus = it.cloudSyncStatus.copy(isWorking = false),
+                            errorMessage = error.message ?: "Google Drive 복구에 실패했습니다.",
+                        )
+                    }
+                }
+                .onSuccess { status ->
+                    _uiState.update {
+                        it.copy(
+                            cloudSyncStatus = status.copy(isWorking = false),
+                            infoMessage = "Google Drive 최신 백업을 복구했습니다. 앱을 완전히 종료 후 다시 열어주세요.",
+                        )
+                    }
+                }
+        }
+    }
+
+    fun disconnectDrive() {
+        viewModelScope.launch {
+            runCatching { cloudSync.disconnect() }
+                .onSuccess {
+                    _uiState.update {
+                        it.copy(
+                            cloudSyncStatus = DriveCloudSyncStatus(),
+                            infoMessage = "Google Drive 연결을 해제했습니다.",
+                        )
+                    }
+                }
         }
     }
 
@@ -110,6 +207,7 @@ class SettingsBackupViewModel @Inject constructor(
 
 data class SettingsBackupUiState(
     val managedStorageUsage: ManagedStorageUsage = ManagedStorageUsage(mediaBytes = 0L, databaseBytes = 0L),
+    val cloudSyncStatus: DriveCloudSyncStatus = DriveCloudSyncStatus(),
     val isWorking: Boolean = false,
     val infoMessage: String? = null,
     val errorMessage: String? = null,

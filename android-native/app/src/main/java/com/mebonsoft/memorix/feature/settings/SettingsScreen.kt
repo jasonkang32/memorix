@@ -3,6 +3,7 @@ package com.mebonsoft.memorix.feature.settings
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.DeleteForever
+import androidx.compose.material.icons.outlined.CloudQueue
 import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.Storage
@@ -56,6 +58,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.mebonsoft.memorix.BuildConfig
+import com.mebonsoft.memorix.core.cloud.DriveCloudSyncSupport
 import com.mebonsoft.memorix.core.locale.AppLanguage
 import com.mebonsoft.memorix.core.locale.MemorixStrings
 import com.mebonsoft.memorix.core.monetization.ProBillingState
@@ -87,6 +90,11 @@ fun SettingsScreen(
     onConsumeMessages: () -> Unit,
     onExportBackup: (android.net.Uri) -> Unit,
     onRestoreBackup: (android.net.Uri) -> Unit,
+    onCreateDriveSignInIntent: () -> Intent,
+    onDriveSignInResult: (Intent?) -> Unit,
+    onCloudBackup: () -> Unit,
+    onCloudRestore: () -> Unit,
+    onDisconnectDrive: () -> Unit,
     onResetAllData: () -> Unit,
     onConsumeBackupMessages: () -> Unit,
     onOpenHiddenVault: () -> Unit,
@@ -115,6 +123,11 @@ fun SettingsScreen(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
         uri?.let(onRestoreBackup)
+    }
+    val driveSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        onDriveSignInResult(result.data)
     }
 
     LaunchedEffect(authState.infoMessage, authState.errorMessage) {
@@ -243,6 +256,14 @@ fun SettingsScreen(
                     onBackup = { if (isPro) backupExportLauncher.launch(backupFileName()) else pendingProFeature = ProFeature.BackupRestore },
                     onRestore = { if (isPro) backupRestoreLauncher.launch(arrayOf("application/zip", "application/octet-stream")) else pendingProFeature = ProFeature.BackupRestore },
                 )
+                CloudSyncSettingsSection(
+                    state = backupState,
+                    isPro = isPro,
+                    onConnect = { if (isPro) driveSignInLauncher.launch(onCreateDriveSignInIntent()) else pendingProFeature = ProFeature.CloudSync },
+                    onBackup = { if (isPro) onCloudBackup() else pendingProFeature = ProFeature.CloudSync },
+                    onRestore = { if (isPro) onCloudRestore() else pendingProFeature = ProFeature.CloudSync },
+                    onDisconnect = onDisconnectDrive,
+                )
                 SettingsDangerRow(
                     title = strings.resetAllDataTitle,
                     subtitle = "DB와 Memorix 내부 파일을 모두 삭제합니다.",
@@ -334,7 +355,7 @@ fun SettingsScreen(
     if (showProDialog) {
         SimpleInfoDialog(
             title = "Memorix Pro",
-            body = "무료 버전은 등록 수량 제한 없이 로컬 기록을 자유롭게 보관합니다.\n\nPro는 오래 쓰는 사용자를 위한 고급 기능입니다.\n• 백업/복구\n• 프라이빗 보관함 보호\n• OCR 검색\n• 고급 검색/필터\n• 사진 여러 장 PDF 내보내기\n• 묶음/ZIP 공유\n\n기본 사진 공유와 문서 등록은 무료로 유지합니다.",
+            body = "무료 버전은 등록 수량 제한 없이 로컬 기록을 자유롭게 보관합니다.\n\nPro는 오래 쓰는 사용자를 위한 고급 기능입니다.\n• 백업/복구\n• Google Drive 동기화\n• 프라이빗 보관함 보호\n• OCR 검색\n• 고급 검색/필터\n• 사진 여러 장 PDF 내보내기\n• 묶음/ZIP 공유\n\n기본 사진 공유와 문서 등록은 무료로 유지합니다.",
             onDismiss = { showProDialog = false },
         )
     }
@@ -641,6 +662,71 @@ private fun ResetAllDataDialog(
         },
         dismissButton = { OutlinedButton(onClick = onDismiss, enabled = !isWorking) { Text("취소") } },
     )
+}
+
+@Composable
+private fun CloudSyncSettingsSection(
+    state: SettingsBackupUiState,
+    isPro: Boolean,
+    onConnect: () -> Unit,
+    onBackup: () -> Unit,
+    onRestore: () -> Unit,
+    onDisconnect: () -> Unit,
+) {
+    val cloudStatus = state.cloudSyncStatus
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(18.dp),
+            )
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(imageVector = Icons.Outlined.CloudQueue, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(if (isPro) "Google Drive 동기화" else "Pro Google Drive 동기화", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    text = DriveCloudSyncSupport.statusLabel(cloudStatus),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (cloudStatus.isConnected) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = onBackup,
+                    enabled = !state.isWorking && !cloudStatus.isWorking,
+                    modifier = Modifier.weight(1f),
+                ) { Text(if (cloudStatus.isWorking) "처리 중..." else "지금 동기화") }
+                OutlinedButton(
+                    onClick = onRestore,
+                    enabled = !state.isWorking && !cloudStatus.isWorking,
+                    modifier = Modifier.weight(1f),
+                ) { Text("최신 복구") }
+            }
+            TextButton(onClick = onDisconnect, enabled = !cloudStatus.isWorking, modifier = Modifier.align(Alignment.End)) {
+                Text("연결 해제")
+            }
+        } else {
+            Button(
+                onClick = onConnect,
+                enabled = !state.isWorking && !cloudStatus.isWorking,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Google Drive 연결") }
+        }
+        Text(
+            text = "내 Google Drive의 앱 전용 공간(appDataFolder)에 Memorix 백업 ZIP을 저장합니다. 일반 Drive 목록에는 보이지 않고, 최신 백업으로 새 폰 복구가 가능합니다.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable

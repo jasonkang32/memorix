@@ -8,6 +8,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -45,7 +47,9 @@ data class ManagedStorageUsage(
 interface MemorixBackupOperations {
     suspend fun calculateManagedStorageUsage(): ManagedStorageUsage
     suspend fun exportBackup(destination: Uri): ManagedStorageUsage
+    suspend fun exportBackupToFile(destination: File): ManagedStorageUsage
     suspend fun restoreBackup(source: Uri): ManagedStorageUsage
+    suspend fun restoreBackupFromFile(source: File): ManagedStorageUsage
     suspend fun resetAllData(): ManagedStorageUsage
 }
 
@@ -62,55 +66,72 @@ class MemorixBackupManager @Inject constructor(
     }
 
     override suspend fun exportBackup(destination: Uri): ManagedStorageUsage = withContext(Dispatchers.IO) {
-        checkpointDatabase()
-        val usage = calculateManagedStorageUsage()
         context.contentResolver.openOutputStream(destination)?.use { output ->
-            ZipOutputStream(BufferedOutputStream(output)).use { zip ->
-                zip.putNextEntry(ZipEntry(MANIFEST_ENTRY))
-                zip.write(Json.encodeToString(MemorixBackupManifest()).toByteArray())
-                zip.closeEntry()
-
-                databaseFiles().forEach { file ->
-                    if (file.exists()) {
-                        zip.writeFile(file, DB_DIR_ENTRY + file.name)
-                    }
-                }
-
-                val root = mediaRoot()
-                if (root.exists()) {
-                    root.walkTopDown()
-                        .filter { it.isFile }
-                        .forEach { file ->
-                            val relative = file.relativeTo(root).invariantSeparatorsPath
-                            zip.writeFile(file, FILES_DIR_ENTRY + MEDIA_DIR_NAME + "/" + relative)
-                        }
-                }
-            }
+            exportBackupToStream(output)
         } ?: error("백업 파일을 열 수 없습니다.")
-        usage
+    }
+
+    override suspend fun exportBackupToFile(destination: File): ManagedStorageUsage = withContext(Dispatchers.IO) {
+        destination.parentFile?.mkdirs()
+        destination.outputStream().use { output -> exportBackupToStream(output) }
     }
 
     override suspend fun restoreBackup(source: Uri): ManagedStorageUsage = withContext(Dispatchers.IO) {
+        context.contentResolver.openInputStream(source)?.use { input ->
+            restoreBackupFromStream(input)
+        } ?: error("복구 파일을 열 수 없습니다.")
+    }
+
+    override suspend fun restoreBackupFromFile(source: File): ManagedStorageUsage = withContext(Dispatchers.IO) {
+        source.inputStream().use { input -> restoreBackupFromStream(input) }
+    }
+
+    private suspend fun exportBackupToStream(output: OutputStream): ManagedStorageUsage {
+        checkpointDatabase()
+        val usage = calculateManagedStorageUsage()
+        ZipOutputStream(BufferedOutputStream(output)).use { zip ->
+            zip.putNextEntry(ZipEntry(MANIFEST_ENTRY))
+            zip.write(Json.encodeToString(MemorixBackupManifest()).toByteArray())
+            zip.closeEntry()
+
+            databaseFiles().forEach { file ->
+                if (file.exists()) {
+                    zip.writeFile(file, DB_DIR_ENTRY + file.name)
+                }
+            }
+
+            val root = mediaRoot()
+            if (root.exists()) {
+                root.walkTopDown()
+                    .filter { it.isFile }
+                    .forEach { file ->
+                        val relative = file.relativeTo(root).invariantSeparatorsPath
+                        zip.writeFile(file, FILES_DIR_ENTRY + MEDIA_DIR_NAME + "/" + relative)
+                    }
+            }
+        }
+        return usage
+    }
+
+    private suspend fun restoreBackupFromStream(input: InputStream): ManagedStorageUsage {
         val tempRoot = File(context.cacheDir, "memorix_restore_${System.currentTimeMillis()}")
         tempRoot.deleteRecursively()
         tempRoot.mkdirs()
 
         try {
-            context.contentResolver.openInputStream(source)?.use { input ->
-                ZipInputStream(BufferedInputStream(input)).use { zip ->
-                    var entry = zip.nextEntry
-                    while (entry != null) {
-                        val safeName = entry.name.safeZipPath()
-                        if (!entry.isDirectory && (safeName.startsWith(DB_DIR_ENTRY) || safeName.startsWith(FILES_DIR_ENTRY))) {
-                            val outFile = File(tempRoot, safeName)
-                            outFile.parentFile?.mkdirs()
-                            outFile.outputStream().use { zip.copyTo(it) }
-                        }
-                        zip.closeEntry()
-                        entry = zip.nextEntry
+            ZipInputStream(BufferedInputStream(input)).use { zip ->
+                var entry = zip.nextEntry
+                while (entry != null) {
+                    val safeName = entry.name.safeZipPath()
+                    if (!entry.isDirectory && (safeName.startsWith(DB_DIR_ENTRY) || safeName.startsWith(FILES_DIR_ENTRY))) {
+                        val outFile = File(tempRoot, safeName)
+                        outFile.parentFile?.mkdirs()
+                        outFile.outputStream().use { zip.copyTo(it) }
                     }
+                    zip.closeEntry()
+                    entry = zip.nextEntry
                 }
-            } ?: error("복구 파일을 열 수 없습니다.")
+            }
 
             val restoredDb = File(tempRoot, DB_DIR_ENTRY + DATABASE_NAME)
             require(restoredDb.exists()) { "Memorix 백업 DB를 찾을 수 없습니다." }
@@ -124,7 +145,7 @@ class MemorixBackupManager @Inject constructor(
                 file.copyTo(File(databasePath().parentFile, file.name), overwrite = true)
             }
 
-            calculateManagedStorageUsage()
+            return calculateManagedStorageUsage()
         } finally {
             tempRoot.deleteRecursively()
         }

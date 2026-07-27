@@ -16,6 +16,7 @@ enum class ProFeature(
     DocumentImport("문서/PDF 등록", false),
     PrivateVaultProtection("프라이빗 보관함 보호", true),
     BackupRestore("백업/복구", true),
+    CloudSync("Google Drive 동기화", true),
     OcrSearch("OCR 검색", true),
     AdvancedFilters("고급 필터", true),
     TagManagement("태그 관리", true),
