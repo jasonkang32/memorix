@@ -855,7 +855,7 @@ private fun SecretWorkRow(
             Icon(Icons.Outlined.Lock, contentDescription = null, tint = if (isSecret) MemorixPrimary else Color.Gray, modifier = Modifier.size(20.dp))
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("비밀 Work", fontWeight = FontWeight.Bold, color = MemorixInk, fontSize = 14.sp)
-                Text("켜면 Work 목록에서 숨겨지고 PIN/생체인증 후에만 볼 수 있습니다.", color = MemorixMuted, fontSize = 12.sp)
+                Text("켜면 파일이 앱 내부에서 암호화되고 일반 목록에서 숨겨집니다.", color = MemorixMuted, fontSize = 12.sp)
             }
             Switch(checked = isSecret, onCheckedChange = onCheckedChange)
         }

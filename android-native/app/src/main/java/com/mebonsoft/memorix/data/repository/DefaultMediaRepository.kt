@@ -16,6 +16,7 @@ import com.mebonsoft.memorix.core.media.MediaDuplicateDetector
 import com.mebonsoft.memorix.core.media.MediaDuplicateProbe
 import com.mebonsoft.memorix.core.media.MediaImportManager
 import com.mebonsoft.memorix.core.media.MediaImportSupport
+import com.mebonsoft.memorix.core.security.SecretMediaStorageManager
 import java.time.ZoneId
 import java.util.UUID
 import javax.inject.Inject
@@ -27,6 +28,7 @@ class DefaultMediaRepository @Inject constructor(
     private val mediaDao: MediaDao,
     private val tagDao: TagDao,
     private val mediaImportManager: MediaImportManager,
+    private val secretMediaStorageManager: SecretMediaStorageManager,
 ) : MediaRepository {
     override fun observeLibrary(): Flow<List<MediaItemEntity>> = mediaDao.observeLibrary()
 
@@ -146,8 +148,10 @@ class DefaultMediaRepository @Inject constructor(
     }
 
     override suspend fun updateMedia(item: MediaItemEntity) {
-        mediaDao.update(item)
-        rebuildSearchIndex(item)
+        val current = mediaDao.findById(item.id)
+        val securedItem = secretMediaStorageManager.applySecretState(current, item)
+        mediaDao.update(securedItem)
+        rebuildSearchIndex(securedItem)
     }
 
     override suspend fun rebuildSearchIndex(item: MediaItemEntity) {
