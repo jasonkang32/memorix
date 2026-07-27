@@ -29,9 +29,10 @@ private const val FILES_DIR_ENTRY = "files/"
 data class MemorixBackupManifest(
     val app: String = "Memorix",
     val packageName: String = "com.mebonsoft.memorix",
-    val version: Int = 1,
+    val version: Int = 2,
     val createdAt: Long = System.currentTimeMillis(),
     val databaseName: String = DATABASE_NAME,
+    val portableSecretMediaKey: Boolean = true,
 )
 
 data class ManagedStorageUsage(

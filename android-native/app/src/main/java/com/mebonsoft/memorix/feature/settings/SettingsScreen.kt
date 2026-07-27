@@ -691,7 +691,7 @@ private fun BackupRestoreSettingsSection(
             }
         }
         Text(
-            text = "백업 파일에는 DB와 앱 내부 originals/thumbs 파일이 함께 저장됩니다.",
+            text = "백업 파일에는 DB, 앱 내부 originals/thumbs 파일, 다른 기기 복구용 비밀 보관함 키가 함께 저장됩니다. 백업 ZIP 자체도 안전한 위치에 보관하세요.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
