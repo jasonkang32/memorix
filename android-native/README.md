@@ -13,6 +13,7 @@ Memorix는 사진·영상·문서를 Work와 Personal로 나눠 조용히 보관
 - 태그/검색/상세 편집
 - 숨긴 보관함 및 앱 잠금
 - 백업/복원
+- Pro Google Drive 동기화
 - 한국어/영어/일본어 언어 선택 기반
 
 ## 활성 작업 루트
@@ -65,7 +66,13 @@ ls -lh app/build/outputs/bundle/release/*.aab
 - 권장 상품 ID: `memorix_pro_lifetime`
 - 권장 한국 가격: `₩14,900`
 
-Pro+ 구독은 클라우드 백업, 기기간 동기화, 서버 비용이 드는 AI 기능을 붙일 때만 검토합니다.
+Pro+ 구독은 자체 S3/R2 기반 Memorix Cloud, 서버 비용이 드는 AI 기능을 붙일 때만 검토합니다.
+
+## Google Drive 개인 연결
+
+Phase 1 클라우드 동기화는 사용자 본인의 Google Drive `appDataFolder`에 백업 ZIP을 저장하는 방식입니다. 설정값과 테스트 절차는 아래 문서에 있습니다.
+
+- `docs/google-drive-phase1-setup.md`
 
 ## 출시 계획 문서
 
