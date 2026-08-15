@@ -83,7 +83,7 @@ fun AlbumsScreen(
                         )
                         .padding(horizontal = 10.dp, vertical = 5.dp),
                 ) {
-                    Text("Personal", color = Color.White, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Text("개인", color = Color.White, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 }
                 Text("앨범", style = MaterialTheme.typography.headlineSmall)
             }

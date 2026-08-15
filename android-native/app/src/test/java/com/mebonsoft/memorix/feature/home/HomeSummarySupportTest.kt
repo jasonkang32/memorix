@@ -3,6 +3,8 @@ package com.mebonsoft.memorix.feature.home
 import com.mebonsoft.memorix.core.database.entity.MediaItemEntity
 import com.mebonsoft.memorix.core.database.entity.MediaSpace
 import com.mebonsoft.memorix.core.database.entity.MediaType
+import java.time.LocalDate
+import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -44,19 +46,46 @@ class HomeSummarySupportTest {
         assertEquals(2, summary.workPhotoCount)
     }
 
+    @Test
+    fun buildRecentActivityBuckets_returnsThirtyDateBucketsWithCounts() {
+        val today = LocalDate.of(2026, 7, 29)
+        val yesterday = today.minusDays(1)
+        val oldestVisible = today.minusDays(29)
+        val olderThanVisible = today.minusDays(30)
+        val items = listOf(
+            mediaItem(id = 10L, takenAt = today.toEpochMillis()),
+            mediaItem(id = 11L, takenAt = today.toEpochMillis()),
+            mediaItem(id = 12L, takenAt = yesterday.toEpochMillis()),
+            mediaItem(id = 13L, takenAt = oldestVisible.toEpochMillis()),
+            mediaItem(id = 14L, takenAt = olderThanVisible.toEpochMillis()),
+        )
+
+        val buckets = buildRecentActivityBuckets(items = items, today = today)
+
+        assertEquals(30, buckets.size)
+        assertEquals(oldestVisible, buckets.first().date)
+        assertEquals(1, buckets.first().count)
+        assertEquals(1, buckets[28].count)
+        assertEquals(today, buckets.last().date)
+        assertEquals(2, buckets.last().count)
+    }
+
     private fun mediaItem(
         id: Long,
-        space: MediaSpace,
-        mediaType: MediaType,
-        batchGroupId: String,
+        space: MediaSpace = MediaSpace.WORK,
+        mediaType: MediaType = MediaType.PHOTO,
+        batchGroupId: String = "registration-$id",
+        takenAt: Long = 1_725_600_000_000L,
     ): MediaItemEntity = MediaItemEntity(
         id = id,
         space = space,
         mediaType = mediaType,
         filePath = "/tmp/$id",
-        takenAt = 1_725_600_000_000L,
-        createdAt = 1_725_600_000_000L,
+        takenAt = takenAt,
+        createdAt = takenAt,
         fileSizeKb = 100L,
         batchGroupId = batchGroupId,
     )
+
+    private fun LocalDate.toEpochMillis(): Long = atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 }

@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.mebonsoft.memorix.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -33,8 +34,13 @@ class DataStoreProEntitlementRepository @Inject constructor(
     }
 
     val stored: Flow<StoredProEntitlement> = context.proEntitlementDataStore.data.map { preferences ->
+        val entitlement = if (BuildConfig.UNLOCK_PRO_FOR_DEV || preferences[Keys.IsPro] == true) {
+            ProEntitlement.ProLifetime
+        } else {
+            ProEntitlement.Free
+        }
         StoredProEntitlement(
-            entitlement = if (preferences[Keys.IsPro] == true) ProEntitlement.ProLifetime else ProEntitlement.Free,
+            entitlement = entitlement,
             purchaseToken = preferences[Keys.PurchaseToken],
         )
     }

@@ -282,6 +282,7 @@ private fun MemorixUnlockedNavHost(
                     onBiometricEnabledChange = authViewModel::setBiometricEnabled,
                     onPersonalLockEnabledChange = authViewModel::setPersonalLockEnabled,
                     onConsumeMessages = authViewModel::consumeMessages,
+                    onBackupModeSelected = settingsBackupViewModel::selectBackupMode,
                     onExportBackup = settingsBackupViewModel::exportBackup,
                     onRestoreBackup = settingsBackupViewModel::restoreBackup,
                     onCreateDriveSignInIntent = settingsBackupViewModel::createDriveSignInIntent,
@@ -290,6 +291,9 @@ private fun MemorixUnlockedNavHost(
                     onCloudRestore = settingsBackupViewModel::restoreLatestCloudBackup,
                     onDisconnectDrive = settingsBackupViewModel::disconnectDrive,
                     onResetAllData = settingsBackupViewModel::resetAllData,
+                    onPrepareOriginalCleanup = settingsBackupViewModel::prepareOriginalCleanup,
+                    onOriginalCleanupResult = settingsBackupViewModel::onOriginalCleanupResult,
+                    onConsumeOriginalCleanupIntent = settingsBackupViewModel::consumePendingOriginalCleanupIntent,
                     onConsumeBackupMessages = settingsBackupViewModel::consumeMessages,
                     onOpenHiddenVault = { navController.navigate(Routes.HiddenVault) },
                     onDeleteTag = settingsViewModel::deleteTag,
@@ -328,16 +332,16 @@ private fun MemorixUnlockedNavHost(
             onDismissRequest = { shareImportUris = emptyList() },
             title = { Text("어디에 저장할까요?") },
             text = {
-                Text("공유한 사진/영상 ${shareImportUris.size}개를 Work 또는 Personal 중 어디에 등록할지 선택하세요.")
+                Text("공유한 사진/영상 ${shareImportUris.size}개를 업무 미디어 또는 개인 미디어 중 어디에 등록할지 선택하세요.")
             },
             confirmButton = {
                 TextButton(onClick = { openSharedImport(MediaSpace.WORK) }) {
-                    Text("Work")
+                    Text("업무 미디어")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { openSharedImport(MediaSpace.PERSONAL) }) {
-                    Text("Personal")
+                    Text("개인 미디어")
                 }
             },
         )

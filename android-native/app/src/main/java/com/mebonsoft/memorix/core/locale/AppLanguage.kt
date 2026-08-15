@@ -37,9 +37,9 @@ data class MemorixStrings(
     companion object {
         fun forLanguage(language: AppLanguage): MemorixStrings = when (language) {
             AppLanguage.KOREAN -> MemorixStrings(
-                navHome = "Home",
-                navWork = "Work",
-                navPersonal = "Personal",
+                navHome = "홈",
+                navWork = "업무",
+                navPersonal = "개인",
                 navSettings = "설정",
                 settingsTitle = "설정",
                 settingsSubtitle = "로그인, 앱 잠금, 태그, 언어를 기기 안에서 안전하게 관리합니다.",

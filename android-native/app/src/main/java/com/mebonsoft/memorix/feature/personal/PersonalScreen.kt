@@ -30,13 +30,13 @@ import androidx.compose.material.icons.outlined.AddAPhoto
 import androidx.compose.material.icons.outlined.Collections
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.CreateNewFolder
+import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.GridView
 
 import androidx.compose.material.icons.outlined.Photo
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.ViewAgenda
-import androidx.compose.material.icons.outlined.Work
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -72,16 +72,14 @@ import com.mebonsoft.memorix.core.database.entity.MediaType
 import com.mebonsoft.memorix.core.media.CameraCaptureSupport
 import com.mebonsoft.memorix.core.media.PendingCameraCapture
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixPersonalEnd
+import com.mebonsoft.memorix.core.designsystem.theme.MemorixPersonalDeep
+import com.mebonsoft.memorix.core.designsystem.theme.MemorixPersonalSoft
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixPersonalStart
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixBorder
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixInk
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixMuted
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixPrimary
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixPrimarySoft
-import com.mebonsoft.memorix.core.designsystem.theme.MemorixWorkDeep
-import com.mebonsoft.memorix.core.designsystem.theme.MemorixWorkEnd
-import com.mebonsoft.memorix.core.designsystem.theme.MemorixWorkSoft
-import com.mebonsoft.memorix.core.designsystem.theme.MemorixWorkStart
 import com.mebonsoft.memorix.feature.albums.AlbumCard
 import com.mebonsoft.memorix.feature.albums.AlbumEditDialog
 import com.mebonsoft.memorix.feature.work.timeline.TimelineSortMode
@@ -129,7 +127,7 @@ fun PersonalScreen(
 
     if (showCreateDialog) {
         AlbumEditDialog(
-            title = "새 Personal 앨범",
+            title = "새 개인 앨범",
             onDismiss = { showCreateDialog = false },
             onConfirm = { title, memo ->
                 viewModel.createAlbum(title, memo)
@@ -186,7 +184,7 @@ fun PersonalScreen(
                 value = uiState.query,
                 onValueChange = viewModel::updateQuery,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Personal 검색...") },
+                label = { Text("개인 미디어 검색...") },
                 leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
                 trailingIcon = {
                     IconButton(onClick = {
@@ -268,7 +266,7 @@ private fun PersonalTopBar(
                         .padding(horizontal = 12.dp, vertical = 7.dp),
                 ) {
                     Text(
-                        text = "Personal",
+                        text = "개인 미디어",
                         color = MemorixPersonalEnd,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.ExtraBold,
@@ -345,11 +343,11 @@ private fun EmptyPersonalAlbumsBlock() {
             Box(
                 modifier = Modifier
                     .size(84.dp)
-                    .background(Brush.linearGradient(listOf(MemorixWorkStart, MemorixWorkEnd)), RoundedCornerShape(24.dp)),
+                    .background(Brush.linearGradient(listOf(MemorixPersonalStart, MemorixPersonalEnd)), RoundedCornerShape(24.dp)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.Work,
+                    imageVector = Icons.Outlined.Favorite,
                     contentDescription = null,
                     tint = Color.White,
                     modifier = Modifier.size(36.dp),
@@ -386,18 +384,18 @@ private fun EmptyPersonalTimelineBlock(hasQuery: Boolean) {
             Box(
                 modifier = Modifier
                     .size(84.dp)
-                    .background(Brush.linearGradient(listOf(MemorixWorkStart, MemorixWorkEnd)), RoundedCornerShape(24.dp)),
+                    .background(Brush.linearGradient(listOf(MemorixPersonalStart, MemorixPersonalEnd)), RoundedCornerShape(24.dp)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.Work,
+                    imageVector = Icons.Outlined.Favorite,
                     contentDescription = null,
                     tint = Color.White,
                     modifier = Modifier.size(36.dp),
                 )
             }
             Text(
-                text = if (hasQuery) "검색 결과가 없습니다" else "업무 미디어가 없어요",
+                text = if (hasQuery) "검색 결과가 없습니다" else "개인 미디어가 없어요",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
@@ -405,7 +403,7 @@ private fun EmptyPersonalTimelineBlock(hasQuery: Boolean) {
                 text = if (hasQuery) {
                     "다른 키워드나 유형 필터를 시도해보세요."
                 } else {
-                    "메모릭스에만 보관하고, 외부에 노출되지 않게 Work 공간에서 관리해보세요."
+                    "메모릭스에만 보관하고, 외부에 노출되지 않게 개인 공간에서 관리해보세요."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -423,11 +421,11 @@ private fun PersonalRegisterDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Work 등록", fontWeight = FontWeight.Bold, color = MemorixInk) },
+        title = { Text("개인 미디어 등록", fontWeight = FontWeight.Bold, color = MemorixInk) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    "업무 사진·영상·문서를 Memorix 내부 저장소에 복사해 등록합니다.",
+                    "개인 사진·영상·문서를 Memorix 내부 저장소에 복사해 등록합니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MemorixMuted,
                 )
@@ -455,7 +453,7 @@ private fun PersonalRegisterDialog(
                     onClick = onOpenDocument,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(999.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MemorixWorkSoft, contentColor = MemorixWorkDeep),
+                    colors = ButtonDefaults.buttonColors(containerColor = MemorixPersonalSoft, contentColor = MemorixPersonalDeep),
                 ) {
                     Icon(Icons.Outlined.Description, contentDescription = null)
                     Spacer(Modifier.width(8.dp))

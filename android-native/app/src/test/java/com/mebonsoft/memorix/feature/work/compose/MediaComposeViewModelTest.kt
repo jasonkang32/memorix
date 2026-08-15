@@ -63,6 +63,57 @@ class MediaComposeViewModelTest {
     }
 
     @Test
+    fun `compose tag preview only exposes selected tags and first ten suggestions`() = runTest(dispatcher) {
+        val tagDao = FakeTagDao(initialTags = (1L..100L).map { id -> testTag(id, "태그$id") })
+        val viewModel = MediaComposeViewModel(SavedStateHandle(), FakeMediaRepository(), tagDao)
+        advanceUntilIdle()
+
+        viewModel.toggleTag(50L)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(100, state.availableTags.size)
+        assertEquals(listOf(50L), state.selectedTags.map { it.id })
+        assertEquals(10, state.suggestedTags.size)
+        assertTrue(state.suggestedTags.none { it.id == 50L })
+        assertEquals(89, state.hiddenTagCount)
+    }
+
+    @Test
+    fun `tag search filters many tags and selected tag appears first`() = runTest(dispatcher) {
+        val tagDao = FakeTagDao(initialTags = (1L..100L).map { id -> testTag(id, "태그$id") })
+        val viewModel = MediaComposeViewModel(SavedStateHandle(), FakeMediaRepository(), tagDao)
+        advanceUntilIdle()
+
+        viewModel.toggleTag(92L)
+        viewModel.updateTagSearchQuery("태그92")
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(listOf(92L), state.searchedTags.map { it.id })
+        assertEquals(false, state.canCreateSearchTag)
+    }
+
+    @Test
+    fun `addCustomTagFromSearch creates selects and clears search query`() = runTest(dispatcher) {
+        val tagDao = FakeTagDao(initialTags = (1L..100L).map { id -> testTag(id, "태그$id") })
+        val viewModel = MediaComposeViewModel(SavedStateHandle(), FakeMediaRepository(), tagDao)
+        advanceUntilIdle()
+
+        viewModel.updateTagSearchQuery("새개인태그")
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.canCreateSearchTag)
+
+        viewModel.addCustomTagFromSearch()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals("", state.tagSearchQuery)
+        assertTrue(state.availableTags.any { it.label == "새개인태그" })
+        assertTrue(state.selectedTags.any { it.label == "새개인태그" })
+    }
+
+    @Test
     fun `removeMediaAt removes selected uri and ignores invalid index`() = runTest(dispatcher) {
         val viewModel = MediaComposeViewModel(SavedStateHandle(), FakeMediaRepository(), FakeTagDao())
         val first = Uri.parse("content://memorix/photo/1")
@@ -156,9 +207,11 @@ class MediaComposeViewModelTest {
     }
 }
 
-private class FakeTagDao : TagDao {
-    private val tags = MutableStateFlow<List<TagEntity>>(emptyList())
-    private var nextId = 1L
+private class FakeTagDao(
+    initialTags: List<TagEntity> = emptyList(),
+) : TagDao {
+    private val tags = MutableStateFlow(initialTags)
+    private var nextId = (initialTags.maxOfOrNull { it.id } ?: 0L) + 1L
 
     override fun observeTags(): Flow<List<TagEntity>> = tags
 
@@ -184,6 +237,18 @@ private class FakeTagDao : TagDao {
     override suspend fun deleteTagById(tagId: Long) = Unit
     override suspend fun deleteManagedTag(tagId: Long) = Unit
 }
+
+private fun testTag(
+    id: Long,
+    label: String,
+) = TagEntity(
+    id = id,
+    key = label.lowercase(),
+    label = label,
+    colorHex = "#005A46",
+    iconName = "tag",
+    isCustom = true,
+)
 
 private class FakeMediaRepository(
     private val previewResult: ImportPreview = ImportPreview(items = emptyList()),
@@ -212,10 +277,12 @@ private class FakeMediaRepository(
         countryCode: String,
         region: String,
         batchGroupId: String?,
+        onProgress: (completed: Int, total: Int) -> Unit,
     ): List<Long> {
         lastTagIds = tagIds
         lastImportedUris = uris
         lastImportSpace = space
+        uris.forEachIndexed { index, _ -> onProgress(index + 1, uris.size) }
         return listOf(1L)
     }
 

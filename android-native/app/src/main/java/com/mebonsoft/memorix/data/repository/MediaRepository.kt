@@ -25,6 +25,7 @@ interface MediaRepository {
         countryCode: String,
         region: String,
         batchGroupId: String? = null,
+        onProgress: (completed: Int, total: Int) -> Unit = { _, _ -> },
     ): List<Long> = importMedia(uris, space)
     suspend fun updateMedia(item: MediaItemEntity)
     suspend fun rebuildSearchIndex(item: MediaItemEntity)

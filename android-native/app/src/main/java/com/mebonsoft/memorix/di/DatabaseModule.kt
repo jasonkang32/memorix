@@ -30,6 +30,7 @@ object DatabaseModule {
                 MemorixDatabase.MIGRATION_3_4,
                 MemorixDatabase.MIGRATION_4_5,
                 MemorixDatabase.MIGRATION_5_6,
+                MemorixDatabase.MIGRATION_6_7,
             )
             .build()
 

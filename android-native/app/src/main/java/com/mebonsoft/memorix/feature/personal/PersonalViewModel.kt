@@ -105,7 +105,7 @@ class PersonalViewModel @Inject constructor(
                     controls.update {
                         it.copy(
                             isImporting = false,
-                            importMessage = "Personal에 ${importedIds.size}개 항목을 등록했습니다.",
+                            importMessage = "개인 미디어에 ${importedIds.size}개 항목을 등록했습니다.",
                             errorMessage = null,
                         )
                     }
@@ -115,7 +115,7 @@ class PersonalViewModel @Inject constructor(
                         it.copy(
                             isImporting = false,
                             importMessage = null,
-                            errorMessage = error.message ?: "Personal 등록에 실패했습니다.",
+                            errorMessage = error.message ?: "개인 미디어 등록에 실패했습니다.",
                         )
                     }
                 }

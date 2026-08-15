@@ -60,7 +60,10 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
         title: const Text('삭제'),
         content: const Text('이 미디어를 삭제할까요?\n파일도 함께 삭제됩니다.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -73,7 +76,9 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
 
     setState(() => _deleting = true);
     await StorageService.deleteFile(item.filePath);
-    if (item.thumbPath != null) await StorageService.deleteFile(item.thumbPath!);
+    if (item.thumbPath != null) {
+      await StorageService.deleteFile(item.thumbPath!);
+    }
     if (item.id != null) await _mediaDao.delete(item.id!);
 
     if (!mounted) return;
@@ -112,12 +117,14 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                         imageProvider: FileImage(File(it.filePath)),
                         minScale: PhotoViewComputedScale.contained,
                         maxScale: PhotoViewComputedScale.covered * 3,
-                        heroAttributes:
-                            PhotoViewHeroAttributes(tag: 'media_${it.id}'),
+                        heroAttributes: PhotoViewHeroAttributes(
+                          tag: 'media_${it.id}',
+                        ),
                       );
                     },
-                    backgroundDecoration:
-                        const BoxDecoration(color: Colors.black),
+                    backgroundDecoration: const BoxDecoration(
+                      color: Colors.black,
+                    ),
                     loadingBuilder: (ctx, event) => const Center(
                       child: CircularProgressIndicator(color: Colors.white54),
                     ),
@@ -144,8 +151,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                   child: Row(
                     children: [
                       IconButton(
-                        icon:
-                            const Icon(Icons.arrow_back, color: Colors.white),
+                        icon: const Icon(Icons.arrow_back, color: Colors.white),
                         onPressed: () => Navigator.pop(context),
                       ),
                       const Spacer(),
@@ -154,7 +160,9 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                           child: Text(
                             item.title,
                             style: const TextStyle(
-                                color: Colors.white, fontSize: 14),
+                              color: Colors.white,
+                              fontSize: 14,
+                            ),
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.center,
                           ),
@@ -167,10 +175,17 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                       IconButton(
                         icon: _deleting
                             ? const SizedBox(
-                                width: 18, height: 18,
+                                width: 18,
+                                height: 18,
                                 child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.delete_outline,
+                                color: Colors.redAccent,
+                              ),
                         onPressed: _deleting ? null : _deleteCurrentItem,
                       ),
                     ],
@@ -191,15 +206,15 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                 alignment: Alignment.bottomCenter,
                 child: SafeArea(
                   child: Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: [Colors.black54, Colors.transparent],
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [Colors.black54, Colors.transparent],
+                      ),
                     ),
-                  ),
-                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
-                  child: Column(
+                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+                    child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -209,27 +224,38 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                             child: Text(
                               '${_current + 1} / ${_items.length}',
                               style: const TextStyle(
-                                  color: Colors.white70, fontSize: 12),
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
                             ),
                           ),
                         if (item.note.isNotEmpty) ...[
                           const SizedBox(height: 8),
-                          Text(item.note,
-                              style: const TextStyle(
-                                  color: Colors.white, fontSize: 13)),
+                          Text(
+                            item.note,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                            ),
+                          ),
                         ],
                         if (item.countryCode.isNotEmpty ||
                             item.region.isNotEmpty) ...[
                           const SizedBox(height: 4),
                           Row(
                             children: [
-                              const Icon(Icons.location_on,
-                                  size: 12, color: Colors.white70),
+                              const Icon(
+                                Icons.location_on,
+                                size: 12,
+                                color: Colors.white70,
+                              ),
                               const SizedBox(width: 4),
                               Text(
                                 '${item.countryCode} ${item.region}'.trim(),
                                 style: const TextStyle(
-                                    color: Colors.white70, fontSize: 12),
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
                               ),
                             ],
                           ),
@@ -238,7 +264,9 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                         Text(
                           _formatDate(item.takenAt),
                           style: const TextStyle(
-                              color: Colors.white54, fontSize: 11),
+                            color: Colors.white54,
+                            fontSize: 11,
+                          ),
                         ),
                       ],
                     ),
@@ -253,8 +281,9 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
   }
 
   Future<void> _shareItem(MediaItem item) async {
-    await Share.shareXFiles([XFile(item.filePath)],
-        text: item.title.isNotEmpty ? item.title : null);
+    await Share.shareXFiles([
+      XFile(item.filePath),
+    ], text: item.title.isNotEmpty ? item.title : null);
   }
 
   static String _formatDate(int ms) {
@@ -277,6 +306,7 @@ class _VideoViewState extends State<_VideoView> {
   VideoPlayerController? _videoCtrl;
   ChewieController? _chewieCtrl;
   bool _initialized = false;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -285,25 +315,53 @@ class _VideoViewState extends State<_VideoView> {
   }
 
   Future<void> _initPlayer() async {
-    final ctrl = VideoPlayerController.file(File(widget.item.filePath));
-    await ctrl.initialize();
-    final chewie = ChewieController(
-      videoPlayerController: ctrl,
-      autoPlay: true,
-      looping: false,
-      aspectRatio: ctrl.value.aspectRatio,
-      materialProgressColors: ChewieProgressColors(
-        playedColor: Colors.white,
-        bufferedColor: Colors.white38,
-        backgroundColor: Colors.white12,
-        handleColor: Colors.white,
-      ),
-    );
-    setState(() {
-      _videoCtrl = ctrl;
-      _chewieCtrl = chewie;
-      _initialized = true;
-    });
+    final file = File(widget.item.filePath);
+    if (!await file.exists()) {
+      if (mounted) {
+        setState(() => _errorMessage = '영상 파일을 찾을 수 없습니다.');
+      }
+      return;
+    }
+
+    final ctrl = VideoPlayerController.file(file);
+    try {
+      await ctrl.initialize();
+      if (!mounted) {
+        await ctrl.dispose();
+        return;
+      }
+
+      // 일부 단말에서는 Chewie의 autoPlay만으로 재생이 시작되지 않아
+      // 초기화 직후 명시적으로 재생을 요청한다.
+      await ctrl.setLooping(false);
+      await ctrl.play();
+
+      final aspectRatio = ctrl.value.aspectRatio > 0
+          ? ctrl.value.aspectRatio
+          : 16 / 9;
+      final chewie = ChewieController(
+        videoPlayerController: ctrl,
+        autoPlay: false,
+        looping: false,
+        aspectRatio: aspectRatio,
+        materialProgressColors: ChewieProgressColors(
+          playedColor: Colors.white,
+          bufferedColor: Colors.white38,
+          backgroundColor: Colors.white12,
+          handleColor: Colors.white,
+        ),
+      );
+      setState(() {
+        _videoCtrl = ctrl;
+        _chewieCtrl = chewie;
+        _initialized = true;
+      });
+    } catch (e) {
+      await ctrl.dispose();
+      if (mounted) {
+        setState(() => _errorMessage = '이 영상 형식은 재생할 수 없습니다.');
+      }
+    }
   }
 
   @override
@@ -315,9 +373,29 @@ class _VideoViewState extends State<_VideoView> {
 
   @override
   Widget build(BuildContext context) {
+    if (_errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white70, size: 42),
+              const SizedBox(height: 12),
+              Text(
+                _errorMessage!,
+                style: const TextStyle(color: Colors.white70),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     if (!_initialized) {
       return const Center(
-          child: CircularProgressIndicator(color: Colors.white54));
+        child: CircularProgressIndicator(color: Colors.white54),
+      );
     }
     return Center(child: Chewie(controller: _chewieCtrl!));
   }

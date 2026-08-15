@@ -2,6 +2,7 @@ package com.mebonsoft.memorix.core.database.entity
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.mebonsoft.memorix.core.media.OriginalSourceCleanupStatus
 
 @Entity(tableName = "media_items")
 data class MediaItemEntity(
@@ -28,4 +29,10 @@ data class MediaItemEntity(
     val isArchived: Boolean = false,
     val isTrashed: Boolean = false,
     val isSecret: Boolean = false,
+    val sourceUri: String = "",
+    val sourceDisplayName: String = "",
+    val sourceSizeKb: Long = 0,
+    val sourceDeletedAt: Long? = null,
+    val sourceCleanupStatus: OriginalSourceCleanupStatus = OriginalSourceCleanupStatus.UNKNOWN,
+    val sourceCleanupError: String = "",
 )

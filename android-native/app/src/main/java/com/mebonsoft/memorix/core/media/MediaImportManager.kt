@@ -33,6 +33,10 @@ class MediaImportManager @Inject constructor(
         val width: Int?,
         val height: Int?,
         val displayName: String?,
+        val sourceUri: String,
+        val sourceDisplayName: String,
+        val sourceSizeKb: Long,
+        val sourceCleanupStatus: OriginalSourceCleanupStatus,
     )
 
     data class PreviewResult(
@@ -117,10 +121,10 @@ class MediaImportManager @Inject constructor(
                 mimeType = mimeType,
                 sourceFileTimeMillis = source.sourceFileTimeMillis,
             )
-            val thumbnailFile = if (mediaType == MediaType.VIDEO) {
-                metadataReader.createVideoThumbnail(output, thumb)
-            } else {
-                null
+            val thumbnailFile = when (mediaType) {
+                MediaType.PHOTO -> metadataReader.createPhotoThumbnail(output, thumb)
+                MediaType.VIDEO -> metadataReader.createVideoThumbnail(output, thumb)
+                MediaType.DOCUMENT -> null
             }
 
             ImportResult(
@@ -134,6 +138,10 @@ class MediaImportManager @Inject constructor(
                 width = metadata.width,
                 height = metadata.height,
                 displayName = source.displayName,
+                sourceUri = request.uri.toString(),
+                sourceDisplayName = source.displayName.orEmpty(),
+                sourceSizeKb = (source.sizeBytes ?: output.length()).coerceAtLeast(0L) / 1024L,
+                sourceCleanupStatus = OriginalMediaCleanupSupport.importStatusFor(request.uri.toString(), mediaType),
             )
         } catch (error: Exception) {
             output.delete()

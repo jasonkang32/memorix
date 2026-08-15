@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -37,9 +38,11 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -51,6 +54,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -58,6 +62,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.mebonsoft.memorix.BuildConfig
+import com.mebonsoft.memorix.core.backup.BackupExportMode
 import com.mebonsoft.memorix.core.cloud.DriveCloudSyncSupport
 import com.mebonsoft.memorix.core.locale.AppLanguage
 import com.mebonsoft.memorix.core.locale.MemorixStrings
@@ -88,6 +93,7 @@ fun SettingsScreen(
     onBiometricEnabledChange: (Boolean) -> Unit,
     onPersonalLockEnabledChange: (Boolean) -> Unit,
     onConsumeMessages: () -> Unit,
+    onBackupModeSelected: (BackupExportMode) -> Unit,
     onExportBackup: (android.net.Uri) -> Unit,
     onRestoreBackup: (android.net.Uri) -> Unit,
     onCreateDriveSignInIntent: () -> Intent,
@@ -96,6 +102,9 @@ fun SettingsScreen(
     onCloudRestore: () -> Unit,
     onDisconnectDrive: () -> Unit,
     onResetAllData: () -> Unit,
+    onPrepareOriginalCleanup: () -> Unit,
+    onOriginalCleanupResult: (Boolean) -> Unit,
+    onConsumeOriginalCleanupIntent: () -> Unit,
     onConsumeBackupMessages: () -> Unit,
     onOpenHiddenVault: () -> Unit,
     onDeleteTag: (Long) -> Unit,
@@ -128,6 +137,18 @@ fun SettingsScreen(
         contract = ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         onDriveSignInResult(result.data)
+    }
+    val originalCleanupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult(),
+    ) { result ->
+        onOriginalCleanupResult(result.resultCode == Activity.RESULT_OK)
+    }
+
+    LaunchedEffect(backupState.pendingOriginalCleanupIntent) {
+        backupState.pendingOriginalCleanupIntent?.let { pendingIntent ->
+            originalCleanupLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+            onConsumeOriginalCleanupIntent()
+        }
     }
 
     LaunchedEffect(authState.infoMessage, authState.errorMessage) {
@@ -218,7 +239,7 @@ fun SettingsScreen(
                 )
                 SecuritySwitchRow(
                     icon = Icons.Outlined.Home,
-                    title = "Personal 별도 잠금",
+                    title = "개인 별도 잠금",
                     subtitle = "개인 공간 접근 시 한 번 더 인증하도록 준비",
                     checked = authState.settings.personalLockEnabled,
                     enabled = authState.settings.hasPin || authState.settings.biometricEnabled,
@@ -228,7 +249,7 @@ fun SettingsScreen(
                     item = SettingsRowModel(
                         Icons.Outlined.LockOpen,
                         "숨긴 보관함",
-                        "Work·Personal에서 숨긴 항목을 인증 후 확인",
+                        "업무·개인에서 숨긴 항목을 인증 후 확인",
                     ),
                     onClick = onOpenHiddenVault,
                 )
@@ -253,7 +274,8 @@ fun SettingsScreen(
                 BackupRestoreSettingsSection(
                     state = backupState,
                     isPro = isPro,
-                    onBackup = { if (isPro) backupExportLauncher.launch(backupFileName()) else pendingProFeature = ProFeature.BackupRestore },
+                    onModeSelected = onBackupModeSelected,
+                    onBackup = { if (isPro) backupExportLauncher.launch(backupFileName(backupState.selectedBackupMode)) else pendingProFeature = ProFeature.BackupRestore },
                     onRestore = { if (isPro) backupRestoreLauncher.launch(arrayOf("application/zip", "application/octet-stream")) else pendingProFeature = ProFeature.BackupRestore },
                 )
                 CloudSyncSettingsSection(
@@ -338,8 +360,11 @@ fun SettingsScreen(
     if (showStorageDialog) {
         SimpleInfoDialog(
             title = "저장소",
-            body = "전체 ${formatBytes(backupState.managedStorageUsage.totalBytes)}\n미디어 ${formatBytes(backupState.managedStorageUsage.mediaBytes)}\nDB ${formatBytes(backupState.managedStorageUsage.databaseBytes)}\n\n초기화는 DB와 앱 내부 originals/thumbs 파일을 모두 삭제합니다.",
+            body = "전체 ${formatBytes(backupState.managedStorageUsage.totalBytes)}\n미디어 ${formatBytes(backupState.managedStorageUsage.mediaBytes)}\nDB ${formatBytes(backupState.managedStorageUsage.databaseBytes)}\n\n원본 파일 정리\n정리 가능 항목 ${backupState.originalCleanupSummary.cleanableCount}개 · 예상 확보 ${formatBytes(backupState.originalCleanupSummary.cleanableBytes)}\nMemorix에 복사 완료된 원본 사진/영상을 기기 저장소에서 삭제해 용량을 확보합니다.\n\n초기화는 DB와 앱 내부 originals/thumbs 파일을 모두 삭제합니다.",
             onDismiss = { showStorageDialog = false },
+            actionLabel = "원본 파일 정리",
+            actionEnabled = !backupState.isWorking && backupState.originalCleanupSummary.cleanableCount > 0,
+            onAction = onPrepareOriginalCleanup,
         )
     }
 
@@ -630,12 +655,20 @@ private fun SimpleInfoDialog(
     title: String,
     body: String,
     onDismiss: () -> Unit,
+    actionLabel: String? = null,
+    actionEnabled: Boolean = true,
+    onAction: (() -> Unit)? = null,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title, fontWeight = FontWeight.Bold) },
         text = { Text(body, style = MaterialTheme.typography.bodyMedium) },
         confirmButton = { TextButton(onClick = onDismiss) { Text("확인") } },
+        dismissButton = {
+            if (actionLabel != null && onAction != null) {
+                Button(onClick = onAction, enabled = actionEnabled) { Text(actionLabel) }
+            }
+        },
     )
 }
 
@@ -733,6 +766,7 @@ private fun CloudSyncSettingsSection(
 private fun BackupRestoreSettingsSection(
     state: SettingsBackupUiState,
     isPro: Boolean,
+    onModeSelected: (BackupExportMode) -> Unit,
     onBackup: () -> Unit,
     onRestore: () -> Unit,
 ) {
@@ -760,6 +794,34 @@ private fun BackupRestoreSettingsSection(
                 )
             }
         }
+        BackupModeOption(
+            mode = BackupExportMode.Full,
+            selectedMode = state.selectedBackupMode,
+            title = "전체 백업",
+            subtitle = "DB + 원본 + 썸네일 모두 포함 · 새 기기 완전 복구용",
+            enabled = !state.isWorking && isPro,
+            onSelected = onModeSelected,
+        )
+        BackupModeOption(
+            mode = BackupExportMode.Quick,
+            selectedMode = state.selectedBackupMode,
+            title = "빠른 백업",
+            subtitle = "DB + 썸네일만 포함 · 고해상도 원본 제외로 훨씬 빠름",
+            enabled = !state.isWorking && isPro,
+            onSelected = onModeSelected,
+        )
+        state.backupProgress?.takeIf { state.isWorking }?.let { progress ->
+            val label = if (progress.totalFiles > 0) {
+                "백업 중 ${progress.completedFiles}/${progress.totalFiles}개 파일"
+            } else {
+                "백업 준비 중..."
+            }
+            LinearProgressIndicator(
+                progress = if (progress.totalFiles > 0) progress.completedFiles.toFloat() / progress.totalFiles else 0f,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = onBackup,
@@ -777,10 +839,45 @@ private fun BackupRestoreSettingsSection(
             }
         }
         Text(
-            text = "백업 파일에는 DB, 앱 내부 originals/thumbs 파일, 다른 기기 복구용 비밀 보관함 키가 함께 저장됩니다. 백업 ZIP 자체도 안전한 위치에 보관하세요.",
+            text = if (state.selectedBackupMode == BackupExportMode.Full) {
+                "전체 백업 파일에는 DB, 앱 내부 originals/thumbs 파일, 다른 기기 복구용 비밀 보관함 키가 함께 저장됩니다. 백업 ZIP 자체도 안전한 위치에 보관하세요."
+            } else {
+                "빠른 백업은 원본 고해상도 파일을 제외합니다. 목록 확인과 메타데이터 복구는 빠르지만, 원본까지 새 기기에 옮기려면 전체 백업을 사용하세요."
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun BackupModeOption(
+    mode: BackupExportMode,
+    selectedMode: BackupExportMode,
+    title: String,
+    subtitle: String,
+    enabled: Boolean,
+    onSelected: (BackupExportMode) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(enabled = enabled) { onSelected(mode) }
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(
+            selected = selectedMode == mode,
+            onClick = { onSelected(mode) },
+            enabled = enabled,
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -836,7 +933,8 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     else -> null
 }
 
-private fun backupFileName(): String {
+private fun backupFileName(mode: BackupExportMode): String {
     val stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
-    return "Memorix_Backup_$stamp.zip"
+    val suffix = if (mode == BackupExportMode.Quick) "Quick" else "Full"
+    return "Memorix_Backup_${suffix}_$stamp.zip"
 }

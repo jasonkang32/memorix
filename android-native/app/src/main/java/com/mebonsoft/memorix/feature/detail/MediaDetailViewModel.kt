@@ -266,7 +266,7 @@ class MediaDetailViewModel @Inject constructor(
                 trashMediaItems(targets)
                 targets.size
             }.onSuccess { deletedCount ->
-                val message = if (deletedCount > 1) "Work 항목을 삭제했습니다." else "미디어를 삭제했습니다."
+                val message = if (deletedCount > 1) "${detailSpaceLabel(item.space)} 미디어를 삭제했습니다." else "미디어를 삭제했습니다."
                 transientState.update { it.copy(isSaving = false, deleted = true, message = message) }
             }.onFailure { error ->
                 transientState.update { it.copy(isSaving = false, message = error.message ?: "삭제에 실패했습니다.") }
@@ -327,6 +327,11 @@ data class LocationDraft(
     val countryCode: String,
     val region: String,
 )
+
+private fun detailSpaceLabel(space: com.mebonsoft.memorix.core.database.entity.MediaSpace): String = when (space) {
+    com.mebonsoft.memorix.core.database.entity.MediaSpace.WORK -> "업무"
+    com.mebonsoft.memorix.core.database.entity.MediaSpace.PERSONAL -> "개인"
+}
 
 private data class MediaDetailTransientState(
     val isSaving: Boolean = false,

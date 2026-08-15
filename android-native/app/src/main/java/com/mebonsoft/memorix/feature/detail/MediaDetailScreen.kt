@@ -9,6 +9,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
+import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -16,7 +17,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -77,6 +81,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -92,6 +97,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -102,8 +108,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.MediaItem as ExoMediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.mebonsoft.memorix.core.database.entity.MediaItemEntity
 import com.mebonsoft.memorix.core.database.entity.MediaSpace
@@ -254,11 +265,14 @@ fun MediaDetailScreen(
         )
     }
 
+    val spaceLabel = detailSpaceLabel(item.space)
+    val detailTitle = "$spaceLabel 미디어"
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Work 미디어") },
+                title = { Text(detailTitle) },
                 navigationIcon = {
                     IconButton(onClick = ::requestBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로")
@@ -344,6 +358,7 @@ fun MediaDetailScreen(
             }
             item {
                 SecretWorkRow(
+                    spaceLabel = spaceLabel,
                     isSecret = isSecret,
                     onCheckedChange = { isSecret = it },
                 )
@@ -406,7 +421,7 @@ fun MediaDetailScreen(
                 ) {
                     Icon(Icons.Outlined.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.size(8.dp))
-                    Text("Work 삭제", fontWeight = FontWeight.SemiBold)
+                    Text("$spaceLabel 미디어 삭제", fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -555,8 +570,8 @@ fun MediaDetailScreen(
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Work 삭제") },
-            text = { Text("이 Work 항목 전체를 삭제할까요? 묶음에 포함된 사진/영상/파일도 함께 삭제됩니다.") },
+            title = { Text("$spaceLabel 미디어 삭제") },
+            text = { Text("이 $spaceLabel 미디어 전체를 삭제할까요? 묶음에 포함된 사진/영상/파일도 함께 삭제됩니다.") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -595,16 +610,10 @@ private fun FullscreenMediaPreviewDialog(
             ) { page ->
                 val item = items[page]
                 Box(modifier = Modifier.fillMaxSize()) {
-                    ZoomableFullscreenImage(item = item)
                     if (item.mediaType == MediaType.VIDEO) {
-                        Icon(
-                            Icons.Filled.PlayCircle,
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.78f),
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .size(72.dp),
-                        )
+                        VideoFullscreenPlayer(item = item)
+                    } else {
+                        ZoomableFullscreenImage(item = item)
                     }
                 }
             }
@@ -653,6 +662,37 @@ private fun FullscreenMediaPreviewDialog(
 }
 
 @Composable
+private fun VideoFullscreenPlayer(item: MediaItemEntity) {
+    val context = LocalContext.current
+    val player = remember(item.id, item.filePath) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(ExoMediaItem.fromUri(File(item.filePath).toUri()))
+            prepare()
+            playWhenReady = true
+        }
+    }
+
+    DisposableEffect(player) {
+        onDispose { player.release() }
+    }
+
+    AndroidView(
+        factory = { viewContext ->
+            PlayerView(viewContext).apply {
+                useController = true
+                this.player = player
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                )
+            }
+        },
+        update = { it.player = player },
+        modifier = Modifier.fillMaxSize(),
+    )
+}
+
+@Composable
 private fun ZoomableFullscreenImage(item: MediaItemEntity) {
     var scale by remember(item.id) { mutableFloatStateOf(1f) }
     var offset by remember(item.id) { mutableStateOf(Offset.Zero) }
@@ -663,14 +703,28 @@ private fun ZoomableFullscreenImage(item: MediaItemEntity) {
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(item.id) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    val nextScale = (scale * zoom).coerceIn(1f, 5f)
-                    scale = nextScale
-                    offset = if (nextScale == 1f) {
-                        Offset.Zero
-                    } else {
-                        offset + pan
-                    }
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                        val pressedCount = event.changes.count { it.pressed }
+                        val shouldHandleZoomGesture = pressedCount >= 2
+                        val shouldHandlePanGesture = scale > 1f
+                        if (shouldHandleZoomGesture || shouldHandlePanGesture) {
+                            val zoomChange = event.calculateZoom()
+                            val panChange = event.calculatePan()
+                            val nextScale = (scale * zoomChange).coerceIn(1f, 5f)
+                            scale = nextScale
+                            offset = if (nextScale == 1f) {
+                                Offset.Zero
+                            } else {
+                                offset + panChange
+                            }
+                            event.changes.forEach { change ->
+                                if (change.positionChanged()) change.consume()
+                            }
+                        }
+                    } while (event.changes.any { it.pressed })
                 }
             }
             .graphicsLayer(
@@ -838,6 +892,7 @@ private fun MemoField(
 
 @Composable
 private fun SecretWorkRow(
+    spaceLabel: String,
     isSecret: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
@@ -854,7 +909,7 @@ private fun SecretWorkRow(
         ) {
             Icon(Icons.Outlined.Lock, contentDescription = null, tint = if (isSecret) MemorixPrimary else Color.Gray, modifier = Modifier.size(20.dp))
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("비밀 Work", fontWeight = FontWeight.Bold, color = MemorixInk, fontSize = 14.sp)
+                Text("비밀 $spaceLabel", fontWeight = FontWeight.Bold, color = MemorixInk, fontSize = 14.sp)
                 Text("켜면 파일이 앱 내부에서 암호화되고 일반 목록에서 숨겨집니다.", color = MemorixMuted, fontSize = 12.sp)
             }
             Switch(checked = isSecret, onCheckedChange = onCheckedChange)
@@ -1021,6 +1076,11 @@ private fun TagChip(tag: TagEntity, selected: Boolean, onClick: () -> Unit) {
             color = if (selected) Color.White else unselectedText,
         )
     }
+}
+
+private fun detailSpaceLabel(space: MediaSpace): String = when (space) {
+    MediaSpace.WORK -> "업무"
+    MediaSpace.PERSONAL -> "개인"
 }
 
 @Composable

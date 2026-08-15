@@ -6,9 +6,12 @@ internal data class ComposeMediaPreviewRow(
 )
 
 internal fun buildComposeMediaPreviewRows(selectedCount: Int): List<ComposeMediaPreviewRow> =
-    (0 until selectedCount).map { index ->
+    (0 until minOf(selectedCount, 6)).map { index ->
         ComposeMediaPreviewRow(
             sourceIndex = index,
             orderLabel = "${index + 1}/$selectedCount",
         )
     }
+
+internal fun hiddenComposeMediaPreviewCount(selectedCount: Int): Int =
+    (selectedCount - 6).coerceAtLeast(0)

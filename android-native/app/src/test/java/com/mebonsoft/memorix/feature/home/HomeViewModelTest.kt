@@ -1,6 +1,8 @@
 package com.mebonsoft.memorix.feature.home
 
 import android.net.Uri
+import com.mebonsoft.memorix.core.backup.BackupExportMode
+import com.mebonsoft.memorix.core.backup.BackupProgress
 import com.mebonsoft.memorix.core.backup.ManagedStorageUsage
 import com.mebonsoft.memorix.core.backup.MemorixBackupOperations
 import com.mebonsoft.memorix.core.database.dao.TagUsageSummary
@@ -58,7 +60,7 @@ class HomeViewModelTest {
         val state = viewModel.uiState.value
         assertFalse(state.isImporting)
         assertNull(state.errorMessage)
-        assertEquals("Work에 3개 항목을 가져왔습니다.", state.importSummaryMessage)
+        assertEquals("업무 미디어에 3개 항목을 가져왔습니다.", state.importSummaryMessage)
     }
 
     @Test
@@ -116,7 +118,7 @@ class HomeViewModelTest {
         assertEquals(listOf(previewUri), repository.lastImportedUris)
         assertEquals(MediaSpace.PERSONAL, repository.lastImportedSpace)
         assertNull(viewModel.uiState.value.pendingImportPreview)
-        assertEquals("Personal에 1개 항목을 가져왔습니다.", viewModel.uiState.value.importSummaryMessage)
+        assertEquals("개인 미디어에 1개 항목을 가져왔습니다.", viewModel.uiState.value.importSummaryMessage)
     }
 
     @Test
@@ -128,7 +130,7 @@ class HomeViewModelTest {
         advanceUntilIdle()
 
         assertEquals(MediaSpace.WORK, repository.lastImportedSpace)
-        assertEquals("Work에 1개 항목을 가져왔습니다.", viewModel.uiState.value.importSummaryMessage)
+        assertEquals("업무 미디어에 1개 항목을 가져왔습니다.", viewModel.uiState.value.importSummaryMessage)
     }
 
     @Test
@@ -190,7 +192,7 @@ class HomeViewModelTest {
 
         viewModel.importMedia(listOf(Uri.EMPTY, Uri.EMPTY, Uri.EMPTY))
         advanceUntilIdle()
-        assertEquals("Work에 3개 항목을 가져왔습니다.", viewModel.uiState.value.importSummaryMessage)
+        assertEquals("업무 미디어에 3개 항목을 가져왔습니다.", viewModel.uiState.value.importSummaryMessage)
 
         viewModel.clearImportSummary()
         advanceUntilIdle()
@@ -262,8 +264,16 @@ private class FakeBackupOperations(
     private val usage: ManagedStorageUsage = ManagedStorageUsage(mediaBytes = 2_048L, databaseBytes = 1_024L),
 ) : MemorixBackupOperations {
     override suspend fun calculateManagedStorageUsage(): ManagedStorageUsage = usage
-    override suspend fun exportBackup(destination: Uri): ManagedStorageUsage = usage
-    override suspend fun exportBackupToFile(destination: java.io.File): ManagedStorageUsage = usage
+    override suspend fun exportBackup(
+        destination: Uri,
+        mode: BackupExportMode,
+        onProgress: (BackupProgress) -> Unit,
+    ): ManagedStorageUsage = usage
+    override suspend fun exportBackupToFile(
+        destination: java.io.File,
+        mode: BackupExportMode,
+        onProgress: (BackupProgress) -> Unit,
+    ): ManagedStorageUsage = usage
     override suspend fun restoreBackup(source: Uri): ManagedStorageUsage = usage
     override suspend fun restoreBackupFromFile(source: java.io.File): ManagedStorageUsage = usage
     override suspend fun resetAllData(): ManagedStorageUsage = ManagedStorageUsage(mediaBytes = 0L, databaseBytes = 0L)

@@ -254,8 +254,8 @@ class HomeViewModel @Inject constructor(
 
     private fun formatImportSummary(importedCount: Int, space: MediaSpace): String {
         val spaceLabel = when (space) {
-            MediaSpace.WORK -> "Work"
-            MediaSpace.PERSONAL -> "Personal"
+            MediaSpace.WORK -> "업무 미디어"
+            MediaSpace.PERSONAL -> "개인 미디어"
         }
         return when (importedCount) {
             0 -> "${spaceLabel}에 가져온 항목이 없습니다."

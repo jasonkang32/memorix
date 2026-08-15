@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -43,7 +45,9 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -72,6 +76,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.mebonsoft.memorix.core.database.entity.MediaSpace
+import com.mebonsoft.memorix.core.database.entity.TagEntity
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixInk
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixMuted
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixPrimary
@@ -95,6 +100,7 @@ fun MediaComposeScreen(
     val profile = composeSpaceProfile(space)
     val context = LocalContext.current
     var showDiscardDialog by remember { mutableStateOf(false) }
+    var showTagPicker by remember { mutableStateOf(false) }
     val canSave = uiState.mediaUris.isNotEmpty() && !uiState.isSaving
 
     val addDocumentLauncher = rememberLauncherForActivityResult(
@@ -127,7 +133,11 @@ fun MediaComposeScreen(
     }
 
     BackHandler {
-        if (uiState.hasContent) showDiscardDialog = true else onBack()
+        when {
+            uiState.isSaving -> Unit
+            uiState.hasContent -> showDiscardDialog = true
+            else -> onBack()
+        }
     }
 
     if (showDiscardDialog) {
@@ -159,13 +169,33 @@ fun MediaComposeScreen(
         )
     }
 
+    if (showTagPicker) {
+        TagPickerDialog(
+            query = uiState.tagSearchQuery,
+            tags = uiState.searchedTags,
+            selectedTagIds = uiState.selectedTagIds,
+            canCreateTag = uiState.canCreateSearchTag,
+            onQueryChange = viewModel::updateTagSearchQuery,
+            onToggleTag = viewModel::toggleTag,
+            onCreateTag = viewModel::addCustomTagFromSearch,
+            onDismiss = {
+                showTagPicker = false
+                viewModel.clearTagSearchQuery()
+            },
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(profile.title, fontWeight = FontWeight.Bold, color = MemorixInk) },
                 navigationIcon = {
                     IconButton(onClick = {
-                        if (uiState.hasContent) showDiscardDialog = true else onBack()
+                        when {
+                            uiState.isSaving -> Unit
+                            uiState.hasContent -> showDiscardDialog = true
+                            else -> onBack()
+                        }
                     }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로")
                     }
@@ -208,6 +238,13 @@ fun MediaComposeScreen(
                 },
             )
 
+            if (uiState.isSaving) {
+                SaveProgressCard(
+                    completed = uiState.saveProgressCompleted,
+                    total = uiState.saveProgressTotal.takeIf { it > 0 } ?: uiState.mediaUris.size,
+                )
+            }
+
             EventDateCard(
                 eventDateMillis = uiState.eventDateMillis,
                 hint = uiState.eventDateHint,
@@ -249,29 +286,14 @@ fun MediaComposeScreen(
                 onAdd = viewModel::addCustomTag,
                 enabled = !uiState.isSaving,
             )
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                uiState.availableTags.forEach { tag ->
-                    val selected = tag.id in uiState.selectedTagIds
-                    FilterChip(
-                        selected = selected,
-                        onClick = { viewModel.toggleTag(tag.id) },
-                        label = {
-                            Text(
-                                text = tag.label,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium,
-                            )
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MemorixPrimary.copy(alpha = 0.16f),
-                            selectedLabelColor = MemorixPrimary,
-                        ),
-                    )
-                }
-            }
+            TagPreviewSection(
+                selectedTags = uiState.selectedTags,
+                suggestedTags = uiState.suggestedTags,
+                selectedTagIds = uiState.selectedTagIds,
+                hiddenTagCount = uiState.hiddenTagCount,
+                onToggleTag = viewModel::toggleTag,
+                onOpenPicker = { showTagPicker = true },
+            )
 
             SectionLabel(profile.locationLabel)
             Text(
@@ -390,6 +412,174 @@ private fun TagInputRow(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TagPreviewSection(
+    selectedTags: List<TagEntity>,
+    suggestedTags: List<TagEntity>,
+    selectedTagIds: List<Long>,
+    hiddenTagCount: Int,
+    onToggleTag: (Long) -> Unit,
+    onOpenPicker: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (selectedTags.isNotEmpty()) {
+            Text("선택한 태그", style = MaterialTheme.typography.labelMedium, color = MemorixMuted)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                selectedTags.forEach { tag ->
+                    ComposeTagChip(tag = tag, selected = true, onClick = { onToggleTag(tag.id) })
+                }
+            }
+        }
+
+        if (suggestedTags.isNotEmpty()) {
+            Text("추천 태그", style = MaterialTheme.typography.labelMedium, color = MemorixMuted)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                suggestedTags.forEach { tag ->
+                    ComposeTagChip(
+                        tag = tag,
+                        selected = tag.id in selectedTagIds,
+                        onClick = { onToggleTag(tag.id) },
+                    )
+                }
+            }
+        }
+
+        if (selectedTags.isEmpty() && suggestedTags.isEmpty()) {
+            Text("아직 태그가 없습니다. 직접 입력하거나 태그 더 찾기에서 새 태그를 추가하세요.", color = MemorixMuted, fontSize = 13.sp)
+        }
+
+        OutlinedButton(
+            onClick = onOpenPicker,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            val suffix = if (hiddenTagCount > 0) " · 숨긴 태그 ${hiddenTagCount}개" else ""
+            Text("태그 더 찾기$suffix")
+        }
+    }
+}
+
+@Composable
+private fun TagPickerDialog(
+    query: String,
+    tags: List<TagEntity>,
+    selectedTagIds: List<Long>,
+    canCreateTag: Boolean,
+    onQueryChange: (String) -> Unit,
+    onToggleTag: (Long) -> Unit,
+    onCreateTag: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("태그 더 찾기", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("태그 검색 또는 새 태그 입력") },
+                    prefix = { Text("#") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                )
+                if (canCreateTag) {
+                    Button(
+                        onClick = onCreateTag,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MemorixPrimary),
+                    ) {
+                        Text("새 태그 추가")
+                    }
+                }
+                Text("전체 태그 ${tags.size}개", style = MaterialTheme.typography.labelMedium, color = MemorixMuted)
+                LazyColumn(
+                    modifier = Modifier.height(360.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(tags, key = { it.id }) { tag ->
+                        ComposeTagChip(
+                            tag = tag,
+                            selected = tag.id in selectedTagIds,
+                            onClick = { onToggleTag(tag.id) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    if (tags.isEmpty()) {
+                        item {
+                            Text("검색 결과가 없습니다. 입력한 이름으로 새 태그를 추가할 수 있습니다.", color = MemorixMuted, fontSize = 13.sp)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("완료") }
+        },
+    )
+}
+
+@Composable
+private fun ComposeTagChip(
+    tag: TagEntity,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        modifier = modifier,
+        label = {
+            Text(
+                text = "#${tag.label}",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = MemorixPrimary.copy(alpha = 0.16f),
+            selectedLabelColor = MemorixPrimary,
+        ),
+    )
+}
+
+@Composable
+private fun SaveProgressCard(completed: Int, total: Int) {
+    val safeTotal = total.coerceAtLeast(1)
+    val safeCompleted = completed.coerceIn(0, safeTotal)
+    val progress = safeCompleted.toFloat() / safeTotal.toFloat()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFF4F7F5), RoundedCornerShape(14.dp))
+            .border(1.dp, Color(0xFFD6E5DE), RoundedCornerShape(14.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = "미디어를 안전하게 보관하는 중",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MemorixInk,
+        )
+        Text(
+            text = "${safeTotal}장 중 ${safeCompleted}장 저장 완료 · 원본과 썸네일을 함께 준비합니다.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MemorixMuted,
+        )
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.fillMaxWidth(),
+            color = MemorixPrimary,
+            trackColor = Color(0xFFE1E8E4),
+        )
+    }
+}
+
 @Composable
 private fun MediaThumbnailRow(
     uris: List<Uri>,
@@ -436,6 +626,7 @@ private fun MediaThumbnailRow(
                     AsyncImage(
                         model = ImageRequest.Builder(context)
                             .data(uri)
+                            .size(720, 480)
                             .crossfade(true)
                             .allowHardware(false)
                             .build(),
@@ -488,6 +679,22 @@ private fun MediaThumbnailRow(
                         modifier = Modifier.size(20.dp),
                     )
                 }
+            }
+        }
+        val hiddenCount = hiddenComposeMediaPreviewCount(uris.size)
+        if (hiddenCount > 0) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFFF4F7F5), RoundedCornerShape(12.dp))
+                    .border(1.dp, Color(0xFFDCE6E1), RoundedCornerShape(12.dp))
+                    .padding(14.dp),
+            ) {
+                Text(
+                    text = "외 ${hiddenCount}장은 저장 시 함께 보관됩니다. 입력화면 성능을 위해 대표 미리보기만 표시합니다.",
+                    color = MemorixMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
         AddMediaButton(onClick = onAdd)

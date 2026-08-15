@@ -11,7 +11,7 @@ class OnboardingContentTest {
 
         assertEquals(4, pages.size)
         assertEquals("내 사진, 밖에 안 나갑니다", pages[0].title)
-        assertEquals("Work · Personal 완전 분리", pages[1].title)
+        assertEquals("업무 · 개인 완전 분리", pages[1].title)
         assertEquals("찾기는 더 똑똑하게", pages[2].title)
         assertEquals("공유는 자유롭게 Pro는 더 깔끔하게", pages[3].title)
         assertTrue(pages[3].description.contains("기본 사진 공유는 무료"))

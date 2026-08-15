@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.Context
 import android.database.Cursor
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.DocumentsContract
@@ -92,6 +93,21 @@ class MediaMetadataReader @Inject constructor(
             retriever.release()
         }
     }
+
+    fun createPhotoThumbnail(photoFile: File, outputFile: File, maxLongEdge: Int = 512): File? = runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(photoFile.absolutePath, bounds)
+        val longest = maxOf(bounds.outWidth, bounds.outHeight).coerceAtLeast(1)
+        val sampleSize = Integer.highestOneBit((longest / maxLongEdge).coerceAtLeast(1))
+        val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        val bitmap = BitmapFactory.decodeFile(photoFile.absolutePath, options) ?: return@runCatching null
+        outputFile.parentFile?.mkdirs()
+        FileOutputStream(outputFile).use { stream ->
+            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 82, stream)) return@runCatching null
+        }
+        bitmap.recycle()
+        outputFile
+    }.getOrNull()
 
     private fun readPhotoMetadata(file: File, sourceFileTimeMillis: Long?): Metadata {
         val exif = ExifInterface(file)

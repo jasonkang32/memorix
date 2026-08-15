@@ -157,7 +157,7 @@ class AuthViewModel @Inject constructor(
             authRepository.setPersonalLockEnabled(enabled)
             mutableState.value = mutableState.value.copy(
                 errorMessage = null,
-                infoMessage = if (enabled) "Personal 별도 잠금이 켜졌습니다." else "Personal 별도 잠금이 꺼졌습니다.",
+                infoMessage = if (enabled) "개인 별도 잠금이 켜졌습니다." else "개인 별도 잠금이 꺼졌습니다.",
             )
         }
     }

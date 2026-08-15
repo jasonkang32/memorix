@@ -1,13 +1,18 @@
 package com.mebonsoft.memorix.feature.settings
 
+import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mebonsoft.memorix.core.backup.BackupExportMode
+import com.mebonsoft.memorix.core.backup.BackupProgress
 import com.mebonsoft.memorix.core.backup.ManagedStorageUsage
 import com.mebonsoft.memorix.core.backup.MemorixBackupOperations
 import com.mebonsoft.memorix.core.cloud.CloudSyncOperations
 import com.mebonsoft.memorix.core.cloud.DriveCloudSyncStatus
+import com.mebonsoft.memorix.core.media.OriginalCleanupSummary
+import com.mebonsoft.memorix.core.media.OriginalMediaCleanupManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.text.DecimalFormat
 import javax.inject.Inject
@@ -20,12 +25,14 @@ import kotlinx.coroutines.launch
 class SettingsBackupViewModel @Inject constructor(
     private val backupManager: MemorixBackupOperations,
     private val cloudSync: CloudSyncOperations,
+    private val originalCleanupManager: OriginalMediaCleanupManager,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsBackupUiState())
     val uiState: StateFlow<SettingsBackupUiState> = _uiState
 
     init {
         refreshManagedStorageUsage()
+        refreshOriginalCleanupSummary()
         refreshCloudStatus()
     }
 
@@ -36,7 +43,85 @@ class SettingsBackupViewModel @Inject constructor(
         }
     }
 
+    fun refreshOriginalCleanupSummary() {
+        viewModelScope.launch {
+            runCatching { originalCleanupManager.calculateSummary() }
+                .onSuccess { summary -> _uiState.update { it.copy(originalCleanupSummary = summary) } }
+        }
+    }
+
+    fun prepareOriginalCleanup() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isWorking = true, errorMessage = null, infoMessage = null, pendingOriginalCleanupIntent = null) }
+            runCatching { originalCleanupManager.prepareDeleteRequest() }
+                .onFailure { error ->
+                    _uiState.update {
+                        it.copy(
+                            isWorking = false,
+                            errorMessage = error.message ?: "원본 파일 정리를 준비하지 못했습니다.",
+                        )
+                    }
+                }
+                .onSuccess { request ->
+                    if (request.pendingIntent == null) {
+                        val message = if (request.itemIds.isNotEmpty()) {
+                            "원본 파일 정리를 완료했습니다. ${request.itemIds.size}개 항목을 정리했습니다."
+                        } else {
+                            "정리 가능한 원본 파일이 없습니다."
+                        }
+                        _uiState.update {
+                            it.copy(
+                                isWorking = false,
+                                originalCleanupSummary = request.summary,
+                                infoMessage = message,
+                            )
+                        }
+                        refreshOriginalCleanupSummary()
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                isWorking = false,
+                                pendingOriginalCleanupIntent = request.pendingIntent,
+                                pendingOriginalCleanupIds = request.itemIds,
+                                originalCleanupSummary = request.summary,
+                            )
+                        }
+                    }
+                }
+        }
+    }
+
+    fun consumePendingOriginalCleanupIntent() {
+        _uiState.update { it.copy(pendingOriginalCleanupIntent = null) }
+    }
+
+    fun onOriginalCleanupResult(confirmed: Boolean) {
+        val ids = _uiState.value.pendingOriginalCleanupIds
+        viewModelScope.launch {
+            _uiState.update { it.copy(isWorking = true, errorMessage = null, infoMessage = null, pendingOriginalCleanupIntent = null) }
+            if (confirmed) {
+                originalCleanupManager.markDeleteRequestCompleted(ids)
+            } else {
+                originalCleanupManager.markDeleteRequestCancelled(ids)
+            }
+            val summary = originalCleanupManager.calculateSummary()
+            _uiState.update {
+                it.copy(
+                    isWorking = false,
+                    pendingOriginalCleanupIds = emptyList(),
+                    originalCleanupSummary = summary,
+                    infoMessage = if (confirmed) "원본 파일 정리가 완료되었습니다." else "원본 파일 정리를 취소했습니다.",
+                )
+            }
+            refreshManagedStorageUsage()
+        }
+    }
+
     fun createDriveSignInIntent(): Intent = cloudSync.createSignInIntent()
+
+    fun selectBackupMode(mode: BackupExportMode) {
+        _uiState.update { it.copy(selectedBackupMode = mode) }
+    }
 
     fun onDriveSignInResult(data: Intent?) {
         viewModelScope.launch {
@@ -130,12 +215,27 @@ class SettingsBackupViewModel @Inject constructor(
 
     fun exportBackup(destination: Uri) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isWorking = true, errorMessage = null, infoMessage = null) }
-            runCatching { backupManager.exportBackup(destination) }
+            val mode = _uiState.value.selectedBackupMode
+            _uiState.update {
+                it.copy(
+                    isWorking = true,
+                    errorMessage = null,
+                    infoMessage = null,
+                    backupProgress = BackupProgress(0, 0),
+                )
+            }
+            runCatching {
+                backupManager.exportBackup(
+                    destination = destination,
+                    mode = mode,
+                    onProgress = { progress -> _uiState.update { it.copy(backupProgress = progress) } },
+                )
+            }
                 .onFailure { error ->
                     _uiState.update {
                         it.copy(
                             isWorking = false,
+                            backupProgress = null,
                             errorMessage = error.message ?: "백업에 실패했습니다.",
                         )
                     }
@@ -145,7 +245,8 @@ class SettingsBackupViewModel @Inject constructor(
                         it.copy(
                             isWorking = false,
                             managedStorageUsage = usage,
-                            infoMessage = "백업을 완료했습니다. 총 ${formatBytes(usage.totalBytes)} 보관함을 저장했습니다.",
+                            backupProgress = null,
+                            infoMessage = "${backupModeLabel(mode)} 백업을 완료했습니다. 총 ${formatBytes(usage.totalBytes)} 보관함을 저장했습니다.",
                         )
                     }
                 }
@@ -207,11 +308,21 @@ class SettingsBackupViewModel @Inject constructor(
 
 data class SettingsBackupUiState(
     val managedStorageUsage: ManagedStorageUsage = ManagedStorageUsage(mediaBytes = 0L, databaseBytes = 0L),
+    val originalCleanupSummary: OriginalCleanupSummary = OriginalCleanupSummary(),
     val cloudSyncStatus: DriveCloudSyncStatus = DriveCloudSyncStatus(),
+    val selectedBackupMode: BackupExportMode = BackupExportMode.Full,
+    val backupProgress: BackupProgress? = null,
     val isWorking: Boolean = false,
     val infoMessage: String? = null,
     val errorMessage: String? = null,
+    val pendingOriginalCleanupIntent: PendingIntent? = null,
+    val pendingOriginalCleanupIds: List<Long> = emptyList(),
 )
+
+internal fun backupModeLabel(mode: BackupExportMode): String = when (mode) {
+    BackupExportMode.Full -> "전체"
+    BackupExportMode.Quick -> "빠른"
+}
 
 internal fun formatBytes(bytes: Long): String {
     if (bytes <= 0L) return "0 B"

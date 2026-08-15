@@ -112,13 +112,13 @@ class DefaultMediaRepository @Inject constructor(
         countryCode: String,
         region: String,
         batchGroupId: String?,
+        onProgress: (completed: Int, total: Int) -> Unit,
     ): List<Long> {
         if (uris.isEmpty()) return emptyList()
         val resolvedBatchGroupId = batchGroupId?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
-        val imported = mediaImportManager.importAll(
-            uris.map { uri -> MediaImportManager.ImportRequest(uri = uri) }
-        )
-        return imported.map { result ->
+        val total = uris.size
+        return uris.mapIndexed { index, uri ->
+            val result = mediaImportManager.import(MediaImportManager.ImportRequest(uri = uri))
             val now = System.currentTimeMillis()
             val item = MediaItemEntity(
                 space = space,
@@ -137,12 +137,17 @@ class DefaultMediaRepository @Inject constructor(
                 mimeType = result.mimeType,
                 width = result.width,
                 height = result.height,
+                sourceUri = result.sourceUri,
+                sourceDisplayName = result.sourceDisplayName,
+                sourceSizeKb = result.sourceSizeKb,
+                sourceCleanupStatus = result.sourceCleanupStatus,
             )
             val id = mediaDao.insert(item)
             if (tagIds.isNotEmpty()) {
                 tagDao.setMediaTags(id, tagIds)
             }
             rebuildSearchIndex(item.copy(id = id))
+            onProgress(index + 1, total)
             id
         }
     }

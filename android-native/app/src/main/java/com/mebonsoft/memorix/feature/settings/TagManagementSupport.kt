@@ -14,7 +14,7 @@ data class ManagedTagRow(
 )
 
 object TagManagementSupport {
-    val emptyMessage: String = "중복되거나 불필요한 태그가 생기면 여기에서 삭제해 Work·Personal 태그 선택 목록을 정리할 수 있습니다."
+    val emptyMessage: String = "중복되거나 불필요한 태그가 생기면 여기에서 삭제해 업무·개인 태그 선택 목록을 정리할 수 있습니다."
 
     fun sortedRows(tags: List<ManagedTag>): List<ManagedTagRow> = tags
         .sortedWith(compareBy<ManagedTag> { it.label.lowercase() }.thenBy { it.id })

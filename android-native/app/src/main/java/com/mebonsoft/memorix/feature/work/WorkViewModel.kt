@@ -141,7 +141,7 @@ class WorkViewModel @Inject constructor(
                     controls.update {
                         it.copy(
                             isImporting = false,
-                            importMessage = "Work에 ${importedIds.size}개 항목을 등록했습니다.",
+                            importMessage = "업무 미디어에 ${importedIds.size}개 항목을 등록했습니다.",
                             errorMessage = null,
                         )
                     }
@@ -151,7 +151,7 @@ class WorkViewModel @Inject constructor(
                         it.copy(
                             isImporting = false,
                             importMessage = null,
-                            errorMessage = error.message ?: "Work 등록에 실패했습니다.",
+                            errorMessage = error.message ?: "업무 미디어 등록에 실패했습니다.",
                         )
                     }
                 }

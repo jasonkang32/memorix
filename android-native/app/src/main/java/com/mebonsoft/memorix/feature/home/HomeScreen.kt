@@ -107,7 +107,6 @@ import com.mebonsoft.memorix.core.media.PendingCameraCapture
 import java.io.File
 import java.text.DecimalFormat
 import java.time.Instant
-import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -296,7 +295,7 @@ fun HomeScreen(
                 ) {
                     SpaceCard(
                         modifier = Modifier.weight(1f),
-                        label = "Work",
+                        label = "업무 미디어",
                         count = summary.workCount,
                         subtitle = "사진 ${summary.workPhotoCount}개 · 영상 ${summary.workVideoCount}개",
                         gradient = Brush.linearGradient(listOf(MemorixWorkStart, MemorixWorkEnd)),
@@ -305,7 +304,7 @@ fun HomeScreen(
                     )
                     SpaceCard(
                         modifier = Modifier.weight(1f),
-                        label = "Personal",
+                        label = "개인 미디어",
                         count = summary.personalCount,
                         subtitle = "사진 ${summary.personalPhotoCount}개 · 영상 ${summary.personalVideoCount}개",
                         gradient = Brush.linearGradient(listOf(MemorixPersonalStart, MemorixPersonalEnd)),
@@ -389,15 +388,6 @@ fun HomeScreen(
                 PaddedHomeContent { ActivityChart(items = uiState.items) }
             }
             item {
-                PaddedHomeContent { SectionTitle(title = "저장 공간") }
-            }
-            item {
-                PaddedHomeContent { StorageUsageCard(summary = summary) }
-            }
-            item {
-                PaddedHomeContent { TypeBreakdown(summary = summary) }
-            }
-            item {
                 Spacer(modifier = Modifier.height(96.dp))
             }
         }
@@ -437,10 +427,10 @@ fun HomeScreen(
             confirmButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { importDayToSpace(MediaSpace.PERSONAL) }) {
-                        Text("Personal")
+                        Text("개인")
                     }
                     Button(onClick = { importDayToSpace(MediaSpace.WORK) }) {
-                        Text("Work")
+                        Text("업무")
                     }
                 }
             },
@@ -753,9 +743,9 @@ private fun SummaryCard(
         DividerBlock(borderColor = borderColor)
         SummaryStat(
             modifier = Modifier.weight(1f),
-            icon = Icons.Rounded.PhotoLibrary,
-            title = "저장 용량",
-            value = summary.storageLabel,
+            icon = Icons.Outlined.DateRange,
+            title = "월별 묶음",
+            value = "${summary.albumEstimate}개",
             color = MemorixSecondary,
         )
         DividerBlock(borderColor = borderColor)
@@ -1077,7 +1067,7 @@ private fun TopTagSection(tags: List<TagUsageSummary>) {
             border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
         ) {
             Text(
-                text = "아직 태그 사용 기록이 없습니다. Work 상세에서 태그를 선택하거나 추가하면 Top 10이 표시됩니다.",
+                text = "아직 태그 사용 기록이 없습니다. 상세에서 태그를 선택하거나 추가하면 Top 10이 표시됩니다.",
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1197,72 +1187,89 @@ private fun RecentRow(
 
 @Composable
 private fun ActivityChart(items: List<MediaItemEntity>) {
-    val dailyCounts = remember(items) {
-        val today = LocalDate.now()
-        val counts = items.groupingBy {
-            Instant.ofEpochMilli(it.takenAt).atZone(ZoneId.systemDefault()).toLocalDate()
-        }.eachCount()
-        (29 downTo 0).map { offset ->
-            val date = today.minusDays(offset.toLong())
-            counts[date] ?: 0
-        }
+    val buckets = remember(items) { buildRecentActivityBuckets(items) }
+    val counts = buckets.map { it.count }
+    val maxCount = counts.maxOrNull()?.coerceAtLeast(1) ?: 1
+    val halfCount = (maxCount / 2).coerceAtLeast(1).takeIf { maxCount > 1 } ?: 0
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("M/d") }
+    val xLabelIndexes = remember(buckets) {
+        listOf(0, 7, 14, 21, 29).filter { it in buckets.indices }
     }
-    val maxCount = dailyCounts.maxOrNull()?.coerceAtLeast(1) ?: 1
 
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(140.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(MaterialTheme.colorScheme.surface)
-            .padding(horizontal = 14.dp, vertical = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.Bottom,
+            .padding(horizontal = 14.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        dailyCounts.forEach { count ->
-            Box(
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(132.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .width(28.dp)
+                    .fillMaxHeight(),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.End,
+            ) {
+                Text("$maxCount", color = MemorixMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text("$halfCount", color = MemorixMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text("0", color = MemorixMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
+            Row(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight(),
-                contentAlignment = Alignment.BottomCenter,
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                verticalAlignment = Alignment.Bottom,
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(((count.toFloat() / maxCount) * 90).coerceAtLeast(if (count > 0) 8f else 2f).dp)
-                        .clip(RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp))
-                        .background(if (count > 0) MemorixPrimary else MaterialTheme.colorScheme.surfaceVariant),
+                buckets.forEach { bucket ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        contentAlignment = Alignment.BottomCenter,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(((bucket.count.toFloat() / maxCount) * 112).coerceAtLeast(if (bucket.count > 0) 8f else 2f).dp)
+                                .clip(RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp))
+                                .background(if (bucket.count > 0) MemorixPrimary else MaterialTheme.colorScheme.surfaceVariant),
+                        )
+                    }
+                }
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 36.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            xLabelIndexes.forEach { index ->
+                Text(
+                    text = buckets[index].date.format(dateFormatter),
+                    color = MemorixMuted,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
                 )
             }
         }
+        Text(
+            text = "X축 날짜 · Y축 등록 수",
+            modifier = Modifier.align(Alignment.End),
+            color = MemorixMuted,
+            fontSize = 11.sp,
+        )
     }
 }
 
-@Composable
-private fun StorageUsageCard(summary: HomeSummary) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 0.dp,
-    ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("전체 용량", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.weight(1f))
-                Text(summary.storageLabel, color = MemorixSecondary, fontWeight = FontWeight.ExtraBold)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StorageChip("사진", summary.photoCount, MemorixWorkStart)
-                StorageChip("영상", summary.videoCount, MemorixPersonalStart)
-                StorageChip("문서", summary.documentCount, MemorixWarning)
-            }
-        }
-    }
-}
 
 @Composable
 private fun TypeBreakdown(summary: HomeSummary) {
@@ -1272,7 +1279,7 @@ private fun TypeBreakdown(summary: HomeSummary) {
     ) {
         BreakdownCard(
             modifier = Modifier.weight(1f),
-            title = "Work",
+            title = "업무 미디어",
             total = summary.workCount,
             photo = summary.workPhotoCount,
             video = summary.workVideoCount,
@@ -1280,7 +1287,7 @@ private fun TypeBreakdown(summary: HomeSummary) {
         )
         BreakdownCard(
             modifier = Modifier.weight(1f),
-            title = "Personal",
+            title = "개인 미디어",
             total = summary.personalCount,
             photo = summary.personalPhotoCount,
             video = summary.personalVideoCount,
@@ -1388,8 +1395,8 @@ private fun displayTypeLabel(type: MediaType): String = when (type) {
 }
 
 private fun displaySpaceLabel(space: MediaSpace): String = when (space) {
-    MediaSpace.WORK -> "Work"
-    MediaSpace.PERSONAL -> "Personal"
+    MediaSpace.WORK -> "업무"
+    MediaSpace.PERSONAL -> "개인"
 }
 
 @Composable
@@ -1432,14 +1439,14 @@ private fun ImportPreviewDialog(
                             onClick = { onSelectSpace(MediaSpace.WORK) },
                             modifier = Modifier.weight(1f),
                         ) {
-                            Text("Work")
+                            Text("업무")
                         }
                     } else {
                         OutlinedButton(
                             onClick = { onSelectSpace(MediaSpace.WORK) },
                             modifier = Modifier.weight(1f),
                         ) {
-                            Text("Work")
+                            Text("업무")
                         }
                     }
 
@@ -1448,14 +1455,14 @@ private fun ImportPreviewDialog(
                             onClick = { onSelectSpace(MediaSpace.PERSONAL) },
                             modifier = Modifier.weight(1f),
                         ) {
-                            Text("Personal")
+                            Text("개인")
                         }
                     } else {
                         OutlinedButton(
                             onClick = { onSelectSpace(MediaSpace.PERSONAL) },
                             modifier = Modifier.weight(1f),
                         ) {
-                            Text("Personal")
+                            Text("개인")
                         }
                     }
                 }

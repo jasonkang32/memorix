@@ -16,6 +16,7 @@ import com.mebonsoft.memorix.core.database.entity.MediaSpace
 import com.mebonsoft.memorix.core.database.entity.MediaTagCrossRef
 import com.mebonsoft.memorix.core.database.entity.MediaType
 import com.mebonsoft.memorix.core.database.entity.TagEntity
+import com.mebonsoft.memorix.core.media.OriginalSourceCleanupStatus
 
 @Database(
     entities = [
@@ -25,7 +26,7 @@ import com.mebonsoft.memorix.core.database.entity.TagEntity
         MediaTagCrossRef::class,
         MediaSearchEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 @TypeConverters(DatabaseConverters::class)
@@ -117,6 +118,17 @@ abstract class MemorixDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_6_7: Migration = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE media_items ADD COLUMN sourceUri TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE media_items ADD COLUMN sourceDisplayName TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE media_items ADD COLUMN sourceSizeKb INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE media_items ADD COLUMN sourceDeletedAt INTEGER")
+                db.execSQL("ALTER TABLE media_items ADD COLUMN sourceCleanupStatus TEXT NOT NULL DEFAULT 'UNKNOWN'")
+                db.execSQL("ALTER TABLE media_items ADD COLUMN sourceCleanupError TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         private fun rebuildSearchIndex(db: SupportSQLiteDatabase) {
             db.execSQL("DELETE FROM media_search")
             db.execSQL(
@@ -141,4 +153,11 @@ class DatabaseConverters {
 
     @TypeConverter
     fun stringToMediaSpace(value: String): MediaSpace = MediaSpace.valueOf(value)
+
+    @TypeConverter
+    fun sourceCleanupStatusToString(value: OriginalSourceCleanupStatus): String = value.name
+
+    @TypeConverter
+    fun stringToSourceCleanupStatus(value: String): OriginalSourceCleanupStatus =
+        runCatching { OriginalSourceCleanupStatus.valueOf(value) }.getOrDefault(OriginalSourceCleanupStatus.UNKNOWN)
 }

@@ -35,6 +35,7 @@ data class MemorixBackupManifest(
     val createdAt: Long = System.currentTimeMillis(),
     val databaseName: String = DATABASE_NAME,
     val portableSecretMediaKey: Boolean = true,
+    val mode: String = BackupExportMode.Full.name,
 )
 
 data class ManagedStorageUsage(
@@ -44,10 +45,28 @@ data class ManagedStorageUsage(
     val totalBytes: Long = mediaBytes + databaseBytes
 }
 
+enum class BackupExportMode {
+    Full,
+    Quick,
+}
+
+data class BackupProgress(
+    val completedFiles: Int,
+    val totalFiles: Int,
+)
+
 interface MemorixBackupOperations {
     suspend fun calculateManagedStorageUsage(): ManagedStorageUsage
-    suspend fun exportBackup(destination: Uri): ManagedStorageUsage
-    suspend fun exportBackupToFile(destination: File): ManagedStorageUsage
+    suspend fun exportBackup(
+        destination: Uri,
+        mode: BackupExportMode = BackupExportMode.Full,
+        onProgress: (BackupProgress) -> Unit = {},
+    ): ManagedStorageUsage
+    suspend fun exportBackupToFile(
+        destination: File,
+        mode: BackupExportMode = BackupExportMode.Full,
+        onProgress: (BackupProgress) -> Unit = {},
+    ): ManagedStorageUsage
     suspend fun restoreBackup(source: Uri): ManagedStorageUsage
     suspend fun restoreBackupFromFile(source: File): ManagedStorageUsage
     suspend fun resetAllData(): ManagedStorageUsage
@@ -65,15 +84,23 @@ class MemorixBackupManager @Inject constructor(
         )
     }
 
-    override suspend fun exportBackup(destination: Uri): ManagedStorageUsage = withContext(Dispatchers.IO) {
+    override suspend fun exportBackup(
+        destination: Uri,
+        mode: BackupExportMode,
+        onProgress: (BackupProgress) -> Unit,
+    ): ManagedStorageUsage = withContext(Dispatchers.IO) {
         context.contentResolver.openOutputStream(destination)?.use { output ->
-            exportBackupToStream(output)
+            exportBackupToStream(output, mode, onProgress)
         } ?: error("백업 파일을 열 수 없습니다.")
     }
 
-    override suspend fun exportBackupToFile(destination: File): ManagedStorageUsage = withContext(Dispatchers.IO) {
+    override suspend fun exportBackupToFile(
+        destination: File,
+        mode: BackupExportMode,
+        onProgress: (BackupProgress) -> Unit,
+    ): ManagedStorageUsage = withContext(Dispatchers.IO) {
         destination.parentFile?.mkdirs()
-        destination.outputStream().use { output -> exportBackupToStream(output) }
+        destination.outputStream().use { output -> exportBackupToStream(output, mode, onProgress) }
     }
 
     override suspend fun restoreBackup(source: Uri): ManagedStorageUsage = withContext(Dispatchers.IO) {
@@ -86,31 +113,48 @@ class MemorixBackupManager @Inject constructor(
         source.inputStream().use { input -> restoreBackupFromStream(input) }
     }
 
-    private suspend fun exportBackupToStream(output: OutputStream): ManagedStorageUsage {
+    private suspend fun exportBackupToStream(
+        output: OutputStream,
+        mode: BackupExportMode,
+        onProgress: (BackupProgress) -> Unit,
+    ): ManagedStorageUsage {
         checkpointDatabase()
         val usage = calculateManagedStorageUsage()
+        val dbFiles = databaseFiles().filter { it.exists() }
+        val mediaFiles = exportableMediaFiles(mode)
+        val totalFiles = dbFiles.size + mediaFiles.size
+        var completedFiles = 0
         ZipOutputStream(BufferedOutputStream(output)).use { zip ->
             zip.putNextEntry(ZipEntry(MANIFEST_ENTRY))
-            zip.write(Json.encodeToString(MemorixBackupManifest()).toByteArray())
+            zip.write(Json.encodeToString(MemorixBackupManifest(mode = mode.name)).toByteArray())
             zip.closeEntry()
 
-            databaseFiles().forEach { file ->
-                if (file.exists()) {
-                    zip.writeFile(file, DB_DIR_ENTRY + file.name)
-                }
+            dbFiles.forEach { file ->
+                zip.writeFile(file, DB_DIR_ENTRY + file.name)
+                completedFiles += 1
+                onProgress(BackupProgress(completedFiles, totalFiles))
             }
 
             val root = mediaRoot()
-            if (root.exists()) {
-                root.walkTopDown()
-                    .filter { it.isFile }
-                    .forEach { file ->
-                        val relative = file.relativeTo(root).invariantSeparatorsPath
-                        zip.writeFile(file, FILES_DIR_ENTRY + MEDIA_DIR_NAME + "/" + relative)
-                    }
+            mediaFiles.forEach { file ->
+                val relative = file.relativeTo(root).invariantSeparatorsPath
+                zip.writeFile(file, FILES_DIR_ENTRY + MEDIA_DIR_NAME + "/" + relative)
+                completedFiles += 1
+                onProgress(BackupProgress(completedFiles, totalFiles))
             }
         }
         return usage
+    }
+
+    private fun exportableMediaFiles(mode: BackupExportMode): List<File> {
+        val root = mediaRoot()
+        if (!root.exists()) return emptyList()
+        return root.walkTopDown()
+            .filter { it.isFile }
+            .filter { file ->
+                mode == BackupExportMode.Full || !file.relativeTo(root).invariantSeparatorsPath.startsWith("originals/")
+            }
+            .toList()
     }
 
     private suspend fun restoreBackupFromStream(input: InputStream): ManagedStorageUsage {
@@ -138,7 +182,10 @@ class MemorixBackupManager @Inject constructor(
 
             database.close()
             mediaRoot().deleteRecursively()
-            File(tempRoot, FILES_DIR_ENTRY + MEDIA_DIR_NAME).copyRecursively(mediaRoot(), overwrite = true)
+            val restoredMediaRoot = File(tempRoot, FILES_DIR_ENTRY + MEDIA_DIR_NAME)
+            if (restoredMediaRoot.exists()) {
+                restoredMediaRoot.copyRecursively(mediaRoot(), overwrite = true)
+            }
 
             databaseFiles().forEach { it.delete() }
             File(tempRoot, DB_DIR_ENTRY).listFiles().orEmpty().forEach { file ->

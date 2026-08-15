@@ -128,7 +128,7 @@ fun HiddenVaultScreen(
                 }
 
                 Text(
-                    text = "자물쇠를 누르면 일반 ${if (uiState.selectedSpace == MediaSpace.WORK) "Work" else "Personal"} 목록으로 복원됩니다.",
+                    text = "자물쇠를 누르면 일반 ${if (uiState.selectedSpace == MediaSpace.WORK) "업무" else "개인"} 목록으로 복원됩니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MemorixMuted,
                 )
@@ -179,7 +179,7 @@ private fun UnlockVaultBlock(
         Text("인증 후 숨긴 항목을 확인합니다", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Text(
             text = if (hasAuthCredential) {
-                "PIN 또는 생체인증으로 Work/Personal에서 숨긴 항목을 열 수 있습니다."
+                "PIN 또는 생체인증으로 업무/개인에서 숨긴 항목을 열 수 있습니다."
             } else {
                 "먼저 설정에서 앱 로그인 PIN 또는 생체인증을 설정해 주세요."
             },
@@ -231,7 +231,7 @@ private fun SpaceFilterRow(
     ) {
         AssistChip(
             onClick = { onSelect(MediaSpace.WORK) },
-            label = { Text("Work $workCount") },
+            label = { Text("업무 $workCount") },
             leadingIcon = { Icon(Icons.Outlined.Work, contentDescription = null, modifier = Modifier.size(16.dp)) },
             colors = if (selectedSpace == MediaSpace.WORK) {
                 AssistChipDefaults.assistChipColors(containerColor = MemorixWorkSoft, labelColor = MemorixWorkDeep)
@@ -241,7 +241,7 @@ private fun SpaceFilterRow(
         )
         AssistChip(
             onClick = { onSelect(MediaSpace.PERSONAL) },
-            label = { Text("Personal $personalCount") },
+            label = { Text("개인 $personalCount") },
             leadingIcon = { Icon(Icons.Outlined.Favorite, contentDescription = null, modifier = Modifier.size(16.dp)) },
             colors = if (selectedSpace == MediaSpace.PERSONAL) {
                 AssistChipDefaults.assistChipColors(containerColor = MemorixPersonalStart.copy(alpha = 0.14f), labelColor = MemorixPersonalEnd)
@@ -281,7 +281,7 @@ private fun EmptyVaultBlock(space: MediaSpace) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Outlined.LockOpen, contentDescription = null, tint = MemorixMuted, modifier = Modifier.size(36.dp))
             Text(
-                text = "숨긴 ${if (space == MediaSpace.WORK) "Work" else "Personal"} 항목이 없습니다",
+                text = "숨긴 ${if (space == MediaSpace.WORK) "업무" else "개인"} 항목이 없습니다",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
             )

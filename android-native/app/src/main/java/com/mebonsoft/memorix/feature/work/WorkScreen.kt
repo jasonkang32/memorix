@@ -192,7 +192,7 @@ fun WorkScreen(
                 value = uiState.query,
                 onValueChange = viewModel::updateQuery,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Work 검색...") },
+                label = { Text("업무 미디어 검색...") },
                 leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
                 trailingIcon = {
                     IconButton(onClick = {
@@ -304,7 +304,7 @@ private fun WorkTopBar(
                         .padding(horizontal = 12.dp, vertical = 7.dp),
                 ) {
                     Text(
-                        text = "Work",
+                        text = "업무 미디어",
                         color = MemorixWorkDeep,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.ExtraBold,
@@ -403,11 +403,11 @@ private fun WorkFilterDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Work 필터", fontWeight = FontWeight.Bold, color = MemorixInk) },
+        title = { Text("업무 미디어 필터", fontWeight = FontWeight.Bold, color = MemorixInk) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "필요할 때만 열어서 유형과 태그로 Work 기록을 좁혀봅니다.",
+                    text = "필요할 때만 열어서 유형과 태그로 업무 기록을 좁혀봅니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MemorixMuted,
                 )
@@ -542,7 +542,7 @@ private fun EmptyWorkBlock(hasQuery: Boolean) {
                 text = if (hasQuery) {
                     "다른 키워드나 유형 필터를 시도해보세요."
                 } else {
-                    "메모릭스에만 보관하고, 외부에 노출되지 않게 Work 공간에서 관리해보세요."
+                    "메모릭스에만 보관하고, 외부에 노출되지 않게 업무 공간에서 관리해보세요."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -564,14 +564,14 @@ private fun SecretUnlockDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("비밀 Work 보기", fontWeight = FontWeight.Bold, color = MemorixInk) },
+        title = { Text("비밀 업무 보기", fontWeight = FontWeight.Bold, color = MemorixInk) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     text = if (hasAuthCredential) {
-                        "비밀로 설정한 Work 항목은 평소 목록에서 숨겨집니다. PIN 또는 생체인증으로 잠시 표시할 수 있습니다."
+                        "비밀로 설정한 업무 항목은 평소 목록에서 숨겨집니다. PIN 또는 생체인증으로 잠시 표시할 수 있습니다."
                     } else {
-                        "비밀 Work를 사용하려면 먼저 설정에서 앱 잠금 PIN 또는 생체인증을 설정해 주세요."
+                        "비밀 업무를 사용하려면 먼저 설정에서 앱 잠금 PIN 또는 생체인증을 설정해 주세요."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MemorixMuted,
@@ -623,7 +623,7 @@ private fun WorkRegisterDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Work 등록", fontWeight = FontWeight.Bold, color = MemorixInk) },
+        title = { Text("업무 미디어 등록", fontWeight = FontWeight.Bold, color = MemorixInk) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(

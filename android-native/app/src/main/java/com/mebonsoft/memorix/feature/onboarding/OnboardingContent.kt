@@ -14,12 +14,12 @@ object MemorixOnboardingContent {
         OnboardingPage(
             emoji = "🔒",
             title = "내 사진, 밖에 안 나갑니다",
-            description = "갤러리 대신 메모릭스에 보관하세요.\n등록 수량 제한 없이 내 폰 안에서 Work와 Personal 기록을 조용히 정리합니다.",
+            description = "갤러리 대신 메모릭스에 보관하세요.\n등록 수량 제한 없이 내 폰 안에서 업무와 개인 기록을 조용히 정리합니다.",
             gradientColors = listOf(Color(0xFF00C896), Color(0xFF00897B)),
         ),
         OnboardingPage(
             emoji = "💼",
-            title = "Work · Personal 완전 분리",
+            title = "업무 · 개인 완전 분리",
             description = "업무 현장 사진과 개인 기록을\n하나의 앱에서 분리해 관리합니다.\n메모, 태그, 날짜로 나중에 바로 찾으세요.",
             gradientColors = listOf(Color(0xFF1A73E8), Color(0xFF7B61FF)),
         ),

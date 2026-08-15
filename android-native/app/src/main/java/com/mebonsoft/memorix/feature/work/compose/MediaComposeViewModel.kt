@@ -50,6 +50,7 @@ class MediaComposeViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val uiState: StateFlow<ComposeUiState> = combine(formState, allTags) { form, tags ->
+        val tagPreview = buildComposeTagPreview(tags, form.selectedTagIds)
         ComposeUiState(
             mediaUris = form.mediaUris,
             eventDateMillis = form.eventDateMillis,
@@ -62,7 +63,15 @@ class MediaComposeViewModel @Inject constructor(
             region = form.region,
             locationHint = form.locationHint,
             availableTags = tags,
+            selectedTags = tagPreview.selectedTags,
+            suggestedTags = tagPreview.suggestedTags,
+            hiddenTagCount = tagPreview.hiddenCount,
+            tagSearchQuery = form.tagSearchQuery,
+            searchedTags = filterComposeTags(tags, form.tagSearchQuery, form.selectedTagIds),
+            canCreateSearchTag = form.tagSearchQuery.trim().trimStart('#').isNotBlank() && !hasExactTagMatch(tags, form.tagSearchQuery),
             isSaving = form.isSaving,
+            saveProgressCompleted = form.saveProgressCompleted,
+            saveProgressTotal = form.saveProgressTotal,
             saveComplete = form.saveComplete,
             errorMessage = form.errorMessage,
             hasContent = form.mediaUris.isNotEmpty() || form.note.isNotBlank() || form.selectedTagIds.isNotEmpty() || form.newTagText.isNotBlank()
@@ -119,17 +128,37 @@ class MediaComposeViewModel @Inject constructor(
         formState.update { it.copy(newTagText = text) }
     }
 
+    fun updateTagSearchQuery(text: String) {
+        formState.update { it.copy(tagSearchQuery = text) }
+    }
+
+    fun clearTagSearchQuery() {
+        formState.update { it.copy(tagSearchQuery = "") }
+    }
+
     fun addCustomTag() {
-        val label = formState.value.newTagText.trim().trimStart('#')
-        if (label.isBlank()) return
+        addCustomTag(label = formState.value.newTagText, clearNewTagText = true)
+    }
+
+    fun addCustomTagFromSearch() {
+        addCustomTag(label = formState.value.tagSearchQuery, clearSearchQuery = true)
+    }
+
+    private fun addCustomTag(
+        label: String,
+        clearNewTagText: Boolean = false,
+        clearSearchQuery: Boolean = false,
+    ) {
+        val normalizedLabel = label.trim().trimStart('#')
+        if (normalizedLabel.isBlank()) return
         viewModelScope.launch {
-            val key = normalizeTagKey(label)
-            val existing = allTags.value.firstOrNull { it.key == key || it.label.equals(label, ignoreCase = true) }
+            val key = normalizeTagKey(normalizedLabel)
+            val existing = allTags.value.firstOrNull { it.key == key || it.label.equals(normalizedLabel, ignoreCase = true) }
             val tagId = existing?.id ?: tagDao.insert(
                 TagEntity(
                     key = key,
-                    label = label,
-                    colorHex = defaultTagColor(label),
+                    label = normalizedLabel,
+                    colorHex = defaultTagColor(normalizedLabel),
                     iconName = "tag",
                     isCustom = true,
                 )
@@ -137,7 +166,8 @@ class MediaComposeViewModel @Inject constructor(
             formState.update { state ->
                 state.copy(
                     selectedTagIds = (state.selectedTagIds + tagId).distinct(),
-                    newTagText = "",
+                    newTagText = if (clearNewTagText) "" else state.newTagText,
+                    tagSearchQuery = if (clearSearchQuery) "" else state.tagSearchQuery,
                 )
             }
         }
@@ -206,7 +236,14 @@ class MediaComposeViewModel @Inject constructor(
         val current = formState.value
         if (current.mediaUris.isEmpty() || current.isSaving) return
         viewModelScope.launch {
-            formState.update { it.copy(isSaving = true, errorMessage = null) }
+            formState.update {
+                it.copy(
+                    isSaving = true,
+                    saveProgressCompleted = 0,
+                    saveProgressTotal = current.mediaUris.size,
+                    errorMessage = null,
+                )
+            }
             runCatching {
                 mediaRepository.importMediaWithMetadata(
                     uris = current.mediaUris,
@@ -215,6 +252,14 @@ class MediaComposeViewModel @Inject constructor(
                     tagIds = current.selectedTagIds,
                     countryCode = current.countryCode,
                     region = current.region,
+                    onProgress = { completed, total ->
+                        formState.update {
+                            it.copy(
+                                saveProgressCompleted = completed,
+                                saveProgressTotal = total,
+                            )
+                        }
+                    },
                 )
             }.onSuccess {
                 formState.update { it.copy(isSaving = false, saveComplete = true) }
@@ -239,7 +284,15 @@ data class ComposeUiState(
     val region: String = "",
     val locationHint: String = "",
     val availableTags: List<TagEntity> = emptyList(),
+    val selectedTags: List<TagEntity> = emptyList(),
+    val suggestedTags: List<TagEntity> = emptyList(),
+    val hiddenTagCount: Int = 0,
+    val tagSearchQuery: String = "",
+    val searchedTags: List<TagEntity> = emptyList(),
+    val canCreateSearchTag: Boolean = false,
     val isSaving: Boolean = false,
+    val saveProgressCompleted: Int = 0,
+    val saveProgressTotal: Int = 0,
     val saveComplete: Boolean = false,
     val errorMessage: String? = null,
     val hasContent: Boolean = false,
@@ -253,10 +306,13 @@ private data class ComposeFormState(
     val note: String = "",
     val selectedTagIds: List<Long> = emptyList(),
     val newTagText: String = "",
+    val tagSearchQuery: String = "",
     val countryCode: String = "",
     val region: String = "",
     val locationHint: String = "사진에 위치정보가 있으면 첫 번째 사진 기준으로 자동 표시됩니다. 위치정보가 없으면 직접 입력해 주세요.",
     val isSaving: Boolean = false,
+    val saveProgressCompleted: Int = 0,
+    val saveProgressTotal: Int = 0,
     val saveComplete: Boolean = false,
     val errorMessage: String? = null,
 )

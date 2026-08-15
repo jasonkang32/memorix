@@ -13,7 +13,7 @@ internal data class ComposeSpaceProfile(
 
 internal fun composeSpaceProfile(space: MediaSpace): ComposeSpaceProfile = when (space) {
     MediaSpace.WORK -> ComposeSpaceProfile(
-        title = "Work 등록",
+        title = "업무 미디어 등록",
         noteLabel = "업무 메모",
         notePlaceholder = "필요한 설명만 적고, 분류는 아래 태그로 관리하세요...",
         tagLabel = "태그",
@@ -21,7 +21,7 @@ internal fun composeSpaceProfile(space: MediaSpace): ComposeSpaceProfile = when 
         locationHint = "현장/업체 위치가 있으면 남겨두세요. 첫 번째 사진 EXIF 위치도 자동 반영됩니다.",
     )
     MediaSpace.PERSONAL -> ComposeSpaceProfile(
-        title = "Personal 등록",
+        title = "개인 미디어 등록",
         noteLabel = "개인 메모",
         notePlaceholder = "오늘의 기억을 조용히 남기고, 분류는 아래 태그로 관리하세요...",
         tagLabel = "태그",
