@@ -182,7 +182,7 @@ class WorkViewModelTest {
     }
 
     @Test
-    fun `secret work items are hidden until unlocked`() = runTest(dispatcher) {
+    fun `secret work items remain masked in the list until unlocked`() = runTest(dispatcher) {
         val repository = FakeMediaRepository(
             workItems = listOf(
                 mediaItem(id = 1, title = "일반", note = "공개"),
@@ -192,7 +192,8 @@ class WorkViewModelTest {
         val viewModel = WorkViewModel(repository, authRepository(), FakeTagDao())
         advanceUntilIdle()
 
-        assertEquals(listOf(1L), viewModel.uiState.value.filteredItems.map { it.id })
+        assertEquals(listOf(1L, 2L), viewModel.uiState.value.filteredItems.map { it.id })
+        assertEquals(true, viewModel.uiState.value.filteredItems.first { it.id == 2L }.isSecret)
 
         viewModel.unlockSecretsByBiometric()
         advanceUntilIdle()
@@ -219,6 +220,7 @@ private class FakeTagDao(
 
     override fun observeTopTagsForSpace(space: MediaSpace, limit: Int): Flow<List<TagUsageSummary>> = flowOf(topTags.take(limit))
 
+    override suspend fun findByLabel(label: String): TagEntity? = null
     override suspend fun insert(tag: TagEntity): Long = tag.id
 
     override suspend fun replaceMediaTags(crossRefs: List<MediaTagCrossRef>) = Unit

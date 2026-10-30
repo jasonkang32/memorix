@@ -15,6 +15,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mebonsoft.memorix.core.database.entity.MediaItemEntity
@@ -54,6 +55,8 @@ fun WorkTimeline(
     onSecretClick: (List<MediaItemEntity>) -> Unit = {},
     secretActionContentDescription: String = "목록에서 숨기기",
     secretActionUnlocked: Boolean = false,
+    accentColor: Color = MemorixPrimary,
+    softColor: Color = MemorixPrimarySoft,
 ) {
     val sections = buildSections(items, sortMode)
 
@@ -63,16 +66,22 @@ fun WorkTimeline(
     ) {
         sections.forEach { section ->
             item(key = "header_${section.dateLabel}") {
-                TimelineDateHeader(label = section.dateLabel, count = section.groups.sumOf { it.items.size })
+            TimelineDateHeader(label = section.dateLabel, count = section.groups.sumOf { it.items.size }, accentColor = accentColor, softColor = softColor)
             }
             items(section.groups, key = { group -> timelineGroupLazyKey(section, group) }) { group ->
                 TimelineCard(
                     items = group.items,
                     tags = group.items.flatMap { tagsByMediaId[it.id].orEmpty() }.distinct(),
-                    onClick = onItemClick,
+                    onClick = { item ->
+                        val secretItem = group.items.firstOrNull { it.isSecret }
+                        onItemClick(if (secretItem != null && !secretActionUnlocked) secretItem else item)
+                    },
                     onSecretClick = { onSecretClick(group.items) },
                     secretActionContentDescription = secretActionContentDescription,
                     secretActionUnlocked = secretActionUnlocked,
+                    locked = group.items.any { it.isSecret } && !secretActionUnlocked,
+                    accentColor = accentColor,
+                    softColor = softColor,
                     modifier = Modifier.padding(horizontal = 4.dp),
                 )
             }
@@ -81,7 +90,7 @@ fun WorkTimeline(
 }
 
 @Composable
-private fun TimelineDateHeader(label: String, count: Int) {
+private fun TimelineDateHeader(label: String, count: Int, accentColor: Color, softColor: Color) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -97,13 +106,13 @@ private fun TimelineDateHeader(label: String, count: Int) {
         Box(
             modifier = Modifier
                 .padding(top = 1.dp)
-                .background(MemorixPrimarySoft, shape = RoundedCornerShape(10.dp))
+                .background(softColor, shape = RoundedCornerShape(10.dp))
                 .padding(horizontal = 8.dp, vertical = 2.dp),
         ) {
             Text(
                 text = count.toString(),
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = timelineHeaderCountTextSize),
-                color = MemorixPrimary,
+                color = accentColor,
             )
         }
     }

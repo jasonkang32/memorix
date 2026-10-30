@@ -95,6 +95,7 @@ fun WorkScreen(
     var showRegisterSheet by remember { mutableStateOf(false) }
     var showSecretUnlockDialog by remember { mutableStateOf(false) }
     var secretPinInput by remember { mutableStateOf("") }
+    var pendingSecretMediaId by remember { mutableStateOf<Long?>(null) }
     var pendingCameraCapture by remember { mutableStateOf<PendingCameraCapture?>(null) }
     val launchSecretBiometric = rememberBiometricLoginLauncher(
         onSuccess = {
@@ -123,6 +124,8 @@ fun WorkScreen(
         if (uiState.secretUnlocked) {
             showSecretUnlockDialog = false
             secretPinInput = ""
+            pendingSecretMediaId?.let(onMediaClick)
+            pendingSecretMediaId = null
         }
     }
 
@@ -149,6 +152,7 @@ fun WorkScreen(
             onDismiss = {
                 showSecretUnlockDialog = false
                 secretPinInput = ""
+                pendingSecretMediaId = null
             },
         )
     }
@@ -226,8 +230,24 @@ fun WorkScreen(
                 tagsByMediaId = uiState.tagsByMediaId,
                 modifier = Modifier.weight(1f),
                 sortMode = uiState.sortMode,
-                onItemClick = { item -> onMediaClick(item.id) },
-                onSecretClick = viewModel::hideItems,
+                secretActionUnlocked = uiState.secretUnlocked,
+                onItemClick = { item ->
+                    if (item.isSecret && !uiState.secretUnlocked) {
+                        pendingSecretMediaId = item.id
+                        showSecretUnlockDialog = true
+                    } else {
+                        onMediaClick(item.id)
+                    }
+                },
+                onSecretClick = { items ->
+                    val secretItem = items.firstOrNull { it.isSecret }
+                    if (secretItem != null && !uiState.secretUnlocked) {
+                        pendingSecretMediaId = secretItem.id
+                        showSecretUnlockDialog = true
+                    } else {
+                        viewModel.hideItems(items)
+                    }
+                },
             )
         }
     }
@@ -569,7 +589,7 @@ private fun SecretUnlockDialog(
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     text = if (hasAuthCredential) {
-                        "비밀로 설정한 업무 항목은 평소 목록에서 숨겨집니다. PIN 또는 생체인증으로 잠시 표시할 수 있습니다."
+                        "비밀로 설정한 업무 항목은 목록에서 사진과 내용을 가려 표시합니다. PIN 또는 생체인증 후 선택한 항목을 열 수 있습니다."
                     } else {
                         "비밀 업무를 사용하려면 먼저 설정에서 앱 잠금 PIN 또는 생체인증을 설정해 주세요."
                     },

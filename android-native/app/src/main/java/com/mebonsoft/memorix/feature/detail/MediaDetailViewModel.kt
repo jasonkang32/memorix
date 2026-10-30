@@ -154,6 +154,20 @@ class MediaDetailViewModel @Inject constructor(
         }
     }
 
+    fun moveToSpace(item: MediaItemEntity, relatedItems: List<MediaItemEntity>, targetSpace: com.mebonsoft.memorix.core.database.entity.MediaSpace) {
+        viewModelScope.launch {
+            transientState.update { it.copy(isSaving = true, message = null) }
+            runCatching {
+                val ids = (relatedItems + item).distinctBy { it.id }.map { it.id }
+                mediaRepository.moveMediaToSpace(ids, targetSpace)
+            }.onSuccess {
+                transientState.update { it.copy(isSaving = false, message = "${detailSpaceLabel(targetSpace)}함으로 이동했습니다.") }
+            }.onFailure { error ->
+                transientState.update { it.copy(isSaving = false, message = error.message ?: "이동에 실패했습니다.") }
+            }
+        }
+    }
+
     fun addMediaToItem(
         uris: List<Uri>,
         item: MediaItemEntity,

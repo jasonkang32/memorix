@@ -224,6 +224,8 @@ private class FakeTagDao(
     override fun observeTopTags(limit: Int): Flow<List<TagUsageSummary>> = flowOf(emptyList())
     override fun observeTopTagsForSpace(space: MediaSpace, limit: Int): Flow<List<TagUsageSummary>> = flowOf(emptyList())
 
+    override suspend fun findByLabel(label: String): TagEntity? = tags.value.firstOrNull { it.label.equals(label, ignoreCase = true) }
+
     override suspend fun insert(tag: TagEntity): Long {
         val id = tag.id.takeIf { it != 0L } ?: nextId++
         tags.value = tags.value + tag.copy(id = id)

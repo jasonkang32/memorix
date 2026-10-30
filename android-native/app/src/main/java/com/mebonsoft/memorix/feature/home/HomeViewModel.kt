@@ -110,7 +110,12 @@ class HomeViewModel @Inject constructor(
         transientState.update { it.copy(selectedImportSpace = space) }
     }
 
-    fun importMedia(uris: List<Uri>, space: MediaSpace = transientState.value.selectedImportSpace) {
+    fun importMedia(
+        uris: List<Uri>,
+        space: MediaSpace = transientState.value.selectedImportSpace,
+        note: String = "",
+        tagLabels: List<String> = emptyList(),
+    ) {
         if (uris.isEmpty()) return
         importJob?.cancel()
         importJob = viewModelScope.launch {
@@ -122,7 +127,11 @@ class HomeViewModel @Inject constructor(
                 )
             }
             try {
-                val importedIds = mediaRepository.importMedia(uris, space)
+                val importedIds = if (note.isNotBlank() || tagLabels.isNotEmpty()) {
+                    mediaRepository.importMediaWithLabels(uris, space, note, tagLabels)
+                } else {
+                    mediaRepository.importMedia(uris, space)
+                }
                 refreshManagedStorageUsage()
                 transientState.update {
                     it.copy(

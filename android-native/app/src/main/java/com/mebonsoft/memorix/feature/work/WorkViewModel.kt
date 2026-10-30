@@ -56,9 +56,7 @@ class WorkViewModel @Inject constructor(
             .mapValues { (_, tags) -> tags.map { it.label }.distinct() }
         val filteredItems = items.filter { item ->
             val itemTags = tagsByMediaId[item.id].orEmpty()
-            val visibleBySecret = controls.showSecrets || !item.isSecret
-            visibleBySecret &&
-                SearchSupport.matchesLocal(item, controls.query, itemTags) &&
+            (item.isSecret || SearchSupport.matchesLocal(item, controls.query, itemTags)) &&
                 (controls.selectedTagLabel == null || controls.selectedTagLabel in itemTags) &&
                 (controls.mediaType == null || item.mediaType == controls.mediaType)
         }

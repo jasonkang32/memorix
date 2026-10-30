@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -25,6 +27,20 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
+    }
+
+    // debug는 PC마다 ~/.android/debug.keystore가 달라 SHA-1이 바뀌고, Console에 없는 SHA-1이면 Drive 연결이 ApiException 10으로 실패한다.
+    // local.properties의 memorix.debugKeystore로 공용 debug keystore를 지정하면 모든 PC가 같은 SHA-1로 서명한다(파일은 커밋하지 않는다).
+    val localProperties = Properties().apply {
+        rootProject.file("local.properties").takeIf { it.isFile }?.inputStream()?.use(::load)
+    }
+    localProperties.getProperty("memorix.debugKeystore")?.takeIf { it.isNotBlank() }?.let { path ->
+        val keystore = file(path)
+        require(keystore.isFile) { "memorix.debugKeystore 파일이 없습니다: $path" }
+        signingConfigs.getByName("debug") {
+            storeFile = keystore
+            localProperties.getProperty("memorix.debugKeyAlias")?.let { keyAlias = it }
+        }
     }
 
     buildTypes {
@@ -104,6 +120,8 @@ dependencies {
     implementation("com.google.dagger:hilt-android:2.52")
     ksp("com.google.dagger:hilt-android-compiler:2.52")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
+    implementation("androidx.hilt:hilt-work:1.2.0")
+    ksp("androidx.hilt:hilt-compiler:1.2.0")
 
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
@@ -112,7 +130,7 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("androidx.biometric:biometric:1.1.0")
-    implementation("com.google.android.gms:play-services-auth:21.2.0")
+    implementation("com.google.android.gms:play-services-auth:22.0.0")
     implementation("com.google.api-client:google-api-client-android:2.7.0")
     implementation("com.google.apis:google-api-services-drive:v3-rev20220815-2.0.0")
     implementation("com.google.http-client:google-http-client-gson:1.45.0")

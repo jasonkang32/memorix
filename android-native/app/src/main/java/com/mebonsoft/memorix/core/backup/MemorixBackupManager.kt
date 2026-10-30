@@ -50,6 +50,14 @@ enum class BackupExportMode {
     Quick,
 }
 
+object RestorePolicy {
+    fun canAutomaticallyRestore(databaseHasRecords: Boolean, mediaFileCount: Int): Boolean =
+        !databaseHasRecords && mediaFileCount == 0
+
+    fun shouldAutomaticallyRestore(enabled: Boolean, databaseHasRecords: Boolean, mediaFileCount: Int): Boolean =
+        enabled && canAutomaticallyRestore(databaseHasRecords, mediaFileCount)
+}
+
 data class BackupProgress(
     val completedFiles: Int,
     val totalFiles: Int,
@@ -70,6 +78,12 @@ interface MemorixBackupOperations {
     suspend fun restoreBackup(source: Uri): ManagedStorageUsage
     suspend fun restoreBackupFromFile(source: File): ManagedStorageUsage
     suspend fun resetAllData(): ManagedStorageUsage
+    suspend fun hasLocalData(): Boolean
+
+    /**
+     * 백업 대상(DB + 미디어)의 변경 여부를 판단하는 지문. 값이 같으면 마지막 백업 이후 변경이 없다.
+     */
+    suspend fun calculateChangeSignature(): Long
 }
 
 @Singleton
@@ -196,6 +210,45 @@ class MemorixBackupManager @Inject constructor(
         } finally {
             tempRoot.deleteRecursively()
         }
+    }
+
+    override suspend fun hasLocalData(): Boolean = withContext(Dispatchers.IO) {
+        val tables = database.openHelper.readableDatabase.query(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'room_master_table'",
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(cursor.getString(0))
+            }
+        }
+        val databaseHasRecords = tables.any { table ->
+            val escapedTable = table.replace("\"", "\"\"")
+            database.openHelper.readableDatabase.query("SELECT EXISTS(SELECT 1 FROM \"$escapedTable\" LIMIT 1)")
+                .use { cursor -> cursor.moveToFirst() && cursor.getInt(0) != 0 }
+        }
+        val mediaFileCount = mediaRoot().walkTopDown().count { it.isFile }
+        databaseHasRecords || mediaFileCount > 0
+    }
+
+    override suspend fun calculateChangeSignature(): Long = withContext(Dispatchers.IO) {
+        var hash = 1125899906842597L
+        val root = mediaRoot()
+        val mediaEntries = if (root.exists()) {
+            root.walkTopDown()
+                .filter { it.isFile }
+                .map { file -> file.relativeTo(root).invariantSeparatorsPath to file }
+                .sortedBy { it.first }
+                .toList()
+        } else {
+            emptyList()
+        }
+        val entries = databaseFiles().filter { it.exists() }.map { it.name to it } + mediaEntries
+        entries.forEach { (name, file) ->
+            hash = hash * 31 + name.hashCode()
+            hash = hash * 31 + file.lengthOrZero()
+            hash = hash * 31 + file.lastModified()
+        }
+        hash = hash * 31 + entries.size
+        hash
     }
 
     override suspend fun resetAllData(): ManagedStorageUsage = withContext(Dispatchers.IO) {

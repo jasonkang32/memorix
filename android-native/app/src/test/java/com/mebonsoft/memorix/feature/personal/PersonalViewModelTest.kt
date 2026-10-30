@@ -144,6 +144,7 @@ private class FakeTagDao(
     override fun observeMediaTagAssignments(): Flow<List<MediaTagAssignment>> = flowOf(assignments)
     override fun observeTopTags(limit: Int) = flowOf(emptyList<com.mebonsoft.memorix.core.database.dao.TagUsageSummary>())
     override fun observeTopTagsForSpace(space: MediaSpace, limit: Int): Flow<List<TagUsageSummary>> = flowOf(emptyList())
+    override suspend fun findByLabel(label: String): TagEntity? = null
     override suspend fun insert(tag: TagEntity): Long = tag.id
     override suspend fun replaceMediaTags(crossRefs: List<MediaTagCrossRef>) = Unit
     override suspend fun clearMediaTags(mediaId: Long) = Unit

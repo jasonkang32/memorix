@@ -14,7 +14,7 @@ class StorageLayoutTest {
 
         val result = StorageLayout.originalsDir(root, now)
 
-        assertEquals("/tmp/memorix-test/originals/2026/05", result.path)
+        assertEquals("/tmp/memorix-test/originals/2026/05", result.invariantSeparatorsPath)
     }
 
     @Test
@@ -28,7 +28,7 @@ class StorageLayoutTest {
             now = LocalDateTime.of(2026, 5, 17, 9, 30),
         )
 
-        assertTrue(result.path.endsWith("/originals/2026/05/sample-id.mp4"))
+        assertTrue(result.invariantSeparatorsPath.endsWith("/originals/2026/05/sample-id.mp4"))
     }
 
     @Test
@@ -41,6 +41,6 @@ class StorageLayoutTest {
             now = LocalDateTime.of(2026, 5, 17, 9, 30),
         )
 
-        assertTrue(result.path.endsWith("/thumbs/2026/05/thumb-id.jpg"))
+        assertTrue(result.invariantSeparatorsPath.endsWith("/thumbs/2026/05/thumb-id.jpg"))
     }
 }

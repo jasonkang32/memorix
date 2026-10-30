@@ -122,6 +122,9 @@ interface TagDao {
     )
     fun observeTopTagsForSpace(space: MediaSpace, limit: Int = 10): Flow<List<TagUsageSummary>>
 
+    @Query("SELECT * FROM tags WHERE label = :label COLLATE NOCASE LIMIT 1")
+    suspend fun findByLabel(label: String): TagEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(tag: TagEntity): Long
 

@@ -68,6 +68,9 @@ fun TimelineCard(
     onSecretClick: () -> Unit,
     secretActionContentDescription: String = "목록에서 숨기기",
     secretActionUnlocked: Boolean = false,
+    locked: Boolean = false,
+    accentColor: Color = MemorixPrimary,
+    softColor: Color = MemorixPrimary.copy(alpha = 0.10f),
     modifier: Modifier = Modifier,
 ) {
     if (items.isEmpty()) return
@@ -88,7 +91,9 @@ fun TimelineCard(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                if (representative.region.isNotBlank() || representative.countryCode.isNotBlank()) {
+                if (locked) {
+                    Text("비밀 처리된 업무", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MemorixInk)
+                } else if (representative.region.isNotBlank() || representative.countryCode.isNotBlank()) {
                     Text(
                         text = buildLocationLabel(representative.countryCode, representative.region),
                         style = MaterialTheme.typography.labelMedium.copy(fontSize = workListBodyTextSize),
@@ -106,13 +111,14 @@ fun TimelineCard(
             ImageGrid(
                 items = items,
                 onClick = onClick,
+                locked = locked,
             )
 
             Column(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (tags.isNotEmpty()) {
+                if (!locked && tags.isNotEmpty()) {
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -121,18 +127,18 @@ fun TimelineCard(
                             Text(
                                 text = "#$tag",
                                 modifier = Modifier
-                                    .background(MemorixPrimary.copy(alpha = 0.10f), RoundedCornerShape(999.dp))
+                                    .background(softColor, RoundedCornerShape(999.dp))
                                     .padding(horizontal = 8.dp, vertical = 4.dp),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = workListMetaTextSize,
-                                color = MemorixPrimary,
+                                color = accentColor,
                                 fontWeight = FontWeight.SemiBold,
                             )
                         }
                     }
                 }
 
-                if (representative.note.isNotBlank()) {
+                if (!locked && representative.note.isNotBlank()) {
                     Text(
                         text = representative.note,
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = workListBodyTextSize),
@@ -221,7 +227,25 @@ fun TimelineCard(
 private fun ImageGrid(
     items: List<MediaItemEntity>,
     onClick: (MediaItemEntity) -> Unit,
+    locked: Boolean = false,
 ) {
+    if (locked) {
+        val lockedItem = items.firstOrNull { it.isSecret } ?: items.first()
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(160.dp)
+                .background(MemorixPrimary.copy(alpha = 0.08f))
+                .clickable { onClick(lockedItem) },
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Icon(Icons.Rounded.Lock, contentDescription = null, tint = MemorixPrimary, modifier = Modifier.size(30.dp))
+                Text("눌러서 인증하고 보기", color = MemorixMuted, style = MaterialTheme.typography.labelMedium)
+            }
+        }
+        return
+    }
     val displayItems = items.take(4)
     val remaining = items.size - 3
 

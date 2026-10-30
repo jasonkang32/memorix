@@ -215,6 +215,8 @@ fun PersonalScreen(
                 tagsByMediaId = uiState.tagsByMediaId,
                 modifier = Modifier.weight(1f),
                 sortMode = uiState.sortMode,
+                accentColor = MemorixPersonalEnd,
+                softColor = MemorixPersonalSoft,
                 onItemClick = { item -> onMediaClick(item.id) },
                 onSecretClick = viewModel::hideItems,
             )

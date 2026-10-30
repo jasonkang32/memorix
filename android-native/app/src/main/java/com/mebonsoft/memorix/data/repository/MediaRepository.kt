@@ -27,6 +27,15 @@ interface MediaRepository {
         batchGroupId: String? = null,
         onProgress: (completed: Int, total: Int) -> Unit = { _, _ -> },
     ): List<Long> = importMedia(uris, space)
+    suspend fun importMediaWithLabels(
+        uris: List<Uri>,
+        space: MediaSpace,
+        note: String,
+        tagLabels: List<String>,
+    ): List<Long> = importMedia(uris, space)
     suspend fun updateMedia(item: MediaItemEntity)
+    suspend fun moveMediaToSpace(ids: List<Long>, space: MediaSpace) {
+        throw UnsupportedOperationException("Moving media between spaces is not supported")
+    }
     suspend fun rebuildSearchIndex(item: MediaItemEntity)
 }

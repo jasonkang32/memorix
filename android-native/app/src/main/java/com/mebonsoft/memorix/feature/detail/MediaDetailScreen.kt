@@ -29,9 +29,11 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -50,6 +52,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.DocumentScanner
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.EditCalendar
 import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material.icons.outlined.Flag
@@ -57,6 +60,7 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material3.AlertDialog
@@ -181,8 +185,23 @@ fun MediaDetailScreen(
     var shouldCloseAfterSave by remember { mutableStateOf(false) }
     var mediaPendingRemoval by remember { mutableStateOf<MediaItemEntity?>(null) }
     var fullscreenPreviewItem by remember { mutableStateOf<MediaItemEntity?>(null) }
+    var pendingDownloadItem by remember { mutableStateOf<MediaItemEntity?>(null) }
     var pendingProFeature by remember { mutableStateOf<ProFeature?>(null) }
     val isPro = uiState.entitlement == ProEntitlement.ProLifetime
+
+    val downloadLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/octet-stream"),
+    ) { destinationUri: Uri? ->
+        val sourceItem = pendingDownloadItem
+        pendingDownloadItem = null
+        if (destinationUri == null || sourceItem == null) return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            val copied = withContext(Dispatchers.IO) {
+                copyMediaToUri(context, sourceItem, destinationUri)
+            }
+            snackbarHostState.showSnackbar(if (copied) "파일을 저장했습니다" else "파일 저장에 실패했습니다")
+        }
+    }
 
     LaunchedEffect(uiState.selectedTagIds) {
         if (!tagsDirty) selectedTagIds = uiState.selectedTagIds
@@ -364,6 +383,18 @@ fun MediaDetailScreen(
                 )
             }
             item {
+                OutlinedButton(
+                    enabled = !uiState.isSaving,
+                    onClick = {
+                        val target = if (item.space == MediaSpace.WORK) MediaSpace.PERSONAL else MediaSpace.WORK
+                        viewModel.moveToSpace(item, uiState.relatedItems, target)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (item.space == MediaSpace.WORK) "개인함으로 이동" else "업무함으로 이동")
+                }
+            }
+            item {
                 EventDateRow(
                     takenAt = takenAt,
                     onClick = { showDatePicker = true },
@@ -467,6 +498,21 @@ fun MediaDetailScreen(
                 val shared = shareMediaItem(context, shareItem)
                 if (!shared) {
                     coroutineScope.launch { snackbarHostState.showSnackbar("공유할 수 있는 사진 파일을 찾지 못했습니다") }
+                }
+            },
+            onDownload = { downloadItem ->
+                val file = File(downloadItem.filePath)
+                if (!file.exists()) {
+                    coroutineScope.launch { snackbarHostState.showSnackbar("저장할 파일을 찾지 못했습니다") }
+                } else {
+                    pendingDownloadItem = downloadItem
+                    downloadLauncher.launch(file.name)
+                }
+            },
+            onOpenExternal = { videoItem ->
+                val opened = openMediaExternally(context, videoItem)
+                if (!opened) {
+                    coroutineScope.launch { snackbarHostState.showSnackbar("영상을 열 수 있는 앱을 찾지 못했습니다") }
                 }
             },
         )
@@ -591,6 +637,8 @@ private fun FullscreenMediaPreviewDialog(
     initialPage: Int,
     onDismiss: () -> Unit,
     onShare: (MediaItemEntity) -> Unit,
+    onDownload: (MediaItemEntity) -> Unit,
+    onOpenExternal: (MediaItemEntity) -> Unit,
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage) { items.size }
     Dialog(
@@ -629,6 +677,36 @@ private fun FullscreenMediaPreviewDialog(
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
             )
+            IconButton(
+                onClick = { onDownload(currentItem) },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 20.dp, end = if (currentItem.mediaType == MediaType.VIDEO) 176.dp else 124.dp)
+                    .size(44.dp)
+                    .background(Color.Black.copy(alpha = 0.58f), CircleShape),
+            ) {
+                Icon(
+                    Icons.Outlined.Download,
+                    contentDescription = "파일 다운로드",
+                    tint = Color.White,
+                )
+            }
+            if (currentItem.mediaType == MediaType.VIDEO) {
+                IconButton(
+                    onClick = { onOpenExternal(currentItem) },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 20.dp, end = 124.dp)
+                        .size(44.dp)
+                        .background(Color.Black.copy(alpha = 0.58f), CircleShape),
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Outlined.OpenInNew,
+                        contentDescription = "폰 내장 앱으로 영상 열기",
+                        tint = Color.White,
+                    )
+                }
+            }
             IconButton(
                 onClick = { onShare(currentItem) },
                 modifier = Modifier
@@ -764,10 +842,20 @@ private fun MediaPreview(
     }
 
     val canOpenFullscreen = isFullscreenPreviewAvailable(item.mediaType) && onFullscreenClick != null
+    val previewAspectRatio = remember(item.id, item.width, item.height) {
+        val width = item.width?.toFloat()
+        val height = item.height?.toFloat()
+        if (width != null && height != null && width > 0f && height > 0f) {
+            (width / height).coerceIn(0.55f, 1.8f)
+        } else {
+            4f / 3f
+        }
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(240.dp)
+            .aspectRatio(previewAspectRatio)
+            .heightIn(max = 420.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0xFFECEFF3))
             .then(if (canOpenFullscreen) Modifier.clickable(onClick = onFullscreenClick!!) else Modifier),
@@ -1040,8 +1128,8 @@ private fun TagSection(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SectionLabel("태그")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            allTags.forEach { tag ->
-                TagChip(tag = tag, selected = tag.id in selectedTagIds, onClick = { onToggle(tag.id) })
+            allTags.filter { it.id in selectedTagIds }.forEach { tag ->
+                TagChip(tag = tag, selected = true, onClick = { onToggle(tag.id) })
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1145,6 +1233,51 @@ private fun createPhotoPdfExport(context: Context, items: List<MediaItemEntity>)
     FileOutputStream(outFile).use { document.writeTo(it) }
     document.close()
     return outFile
+}
+
+private fun copyMediaToUri(context: Context, item: MediaItemEntity, destinationUri: Uri): Boolean {
+    val source = File(item.filePath)
+    if (!source.exists()) return false
+    return try {
+        source.inputStream().use { input ->
+            context.contentResolver.openOutputStream(destinationUri)?.use { output ->
+                input.copyTo(output)
+            } ?: return false
+        }
+        true
+    } catch (_: Exception) {
+        false
+    }
+}
+
+private fun openMediaExternally(context: Context, item: MediaItemEntity): Boolean {
+    if (item.mediaType != MediaType.VIDEO) return false
+    val file = File(item.filePath)
+    if (!file.exists()) return false
+    return try {
+        val contentUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(contentUri, mediaMimeType(item))
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = ClipData.newUri(context.contentResolver, file.name, contentUri)
+        }
+        context.startActivity(viewIntent)
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
+    } catch (_: IllegalArgumentException) {
+        false
+    } catch (_: SecurityException) {
+        false
+    }
+}
+
+private fun mediaMimeType(item: MediaItemEntity): String = item.mimeType.ifBlank {
+    when (item.mediaType) {
+        MediaType.PHOTO -> "image/*"
+        MediaType.VIDEO -> "video/*"
+        MediaType.DOCUMENT -> "application/octet-stream"
+    }
 }
 
 private fun shareExportFile(context: Context, file: File, mimeType: String, chooserTitle: String): Boolean {
