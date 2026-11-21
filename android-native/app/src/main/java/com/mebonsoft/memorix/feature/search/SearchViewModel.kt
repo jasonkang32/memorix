@@ -8,6 +8,7 @@ import com.mebonsoft.memorix.core.database.entity.MediaType
 import com.mebonsoft.memorix.data.repository.SearchRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import java.time.LocalDate
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -39,18 +40,25 @@ class SearchViewModel @Inject constructor(
         albumsFlow,
         resultsFlow,
     ) { currentFilters, albums, results ->
+        val filteredResults = results.filter { currentFilters.dateRange.contains(it.takenAt) }
         SearchUiState(
             query = currentFilters.query,
             selectedAlbumId = currentFilters.albumId,
             selectedMediaType = currentFilters.mediaType,
             albums = albums,
-            results = results,
+            results = filteredResults,
+            dateRange = currentFilters.dateRange,
             summary = SearchUiStateFactory.createSummary(
                 query = currentFilters.query,
-                resultCount = results.size,
+                resultCount = filteredResults.size,
                 albumTitle = albums.firstOrNull { it.id == currentFilters.albumId }?.title,
                 mediaTypeLabel = SearchSupport.mediaTypeLabel(currentFilters.mediaType),
-            ),
+            ).let { summary ->
+                if (currentFilters.dateRange.isActive) {
+                    val range = currentFilters.dateRange
+                    "$summary · ${range.from ?: "시작 제한 없음"} ~ ${range.to ?: "종료 제한 없음"}"
+                } else summary
+            },
         )
     }.stateIn(
         scope = viewModelScope,
@@ -69,6 +77,10 @@ class SearchViewModel @Inject constructor(
     fun updateMediaType(mediaType: MediaType?) {
         filters.update { it.copy(mediaType = mediaType) }
     }
+
+    fun updateDateRange(from: LocalDate?, to: LocalDate?) {
+        filters.update { it.copy(dateRange = SearchDateRange(from, to)) }
+    }
 }
 
 data class SearchUiState(
@@ -78,10 +90,12 @@ data class SearchUiState(
     val albums: List<AlbumSummary> = emptyList(),
     val results: List<MediaItemEntity> = emptyList(),
     val summary: String = "전체 미디어 · 0건",
+    val dateRange: SearchDateRange = SearchDateRange(),
 )
 
 private data class SearchFilters(
     val query: String = "",
     val albumId: Long? = null,
     val mediaType: MediaType? = null,
+    val dateRange: SearchDateRange = SearchDateRange(),
 )

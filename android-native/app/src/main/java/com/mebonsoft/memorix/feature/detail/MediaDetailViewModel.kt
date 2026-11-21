@@ -7,6 +7,8 @@ import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mebonsoft.memorix.core.security.MediaProtection
+import com.mebonsoft.memorix.core.security.withProtection
 import com.mebonsoft.memorix.core.database.dao.TagDao
 import com.mebonsoft.memorix.core.database.entity.AlbumSummary
 import com.mebonsoft.memorix.core.database.entity.MediaItemEntity
@@ -97,7 +99,7 @@ class MediaDetailViewModel @Inject constructor(
         region: String,
         takenAt: Long,
         selectedTagIds: List<Long>,
-        isSecret: Boolean = item.isSecret,
+        protection: MediaProtection = MediaProtection.of(item),
         relatedItems: List<MediaItemEntity> = emptyList(),
     ) {
         viewModelScope.launch {
@@ -114,8 +116,7 @@ class MediaDetailViewModel @Inject constructor(
                     region = region.trim(),
                     batchGroupId = resolvedBatchGroupId,
                     takenAt = takenAt,
-                    isSecret = isSecret,
-                )
+                ).withProtection(protection)
                 groupItems.forEach { groupItem ->
                     mediaRepository.updateMedia(
                         if (groupItem.id == item.id) updated else groupItem.copy(
@@ -123,13 +124,17 @@ class MediaDetailViewModel @Inject constructor(
                             countryCode = countryCode.trim(),
                             region = region.trim(),
                             batchGroupId = groupItem.batchGroupId.ifBlank { resolvedBatchGroupId },
-                            isSecret = isSecret,
-                        ),
+                        ).withProtection(protection),
                     )
                 }
                 tagDao.setMediaTags(item.id, selectedTagIds)
             }.onSuccess {
-                transientState.update { it.copy(isSaving = false, message = "저장했습니다.") }
+                val message = if (protection == MediaProtection.Secret) {
+                    "저장했습니다. 비밀 기록은 설정 > 비밀 보관함에서 볼 수 있습니다."
+                } else {
+                    "저장했습니다."
+                }
+                transientState.update { it.copy(isSaving = false, message = message) }
             }.onFailure { error ->
                 transientState.update { it.copy(isSaving = false, message = error.message ?: "저장에 실패했습니다.") }
             }
@@ -151,6 +156,20 @@ class MediaDetailViewModel @Inject constructor(
                 )
             )
             tagDao.setMediaTags(mediaId, (currentSelectedTagIds + tagId).distinct())
+        }
+    }
+
+    fun moveToSpace(item: MediaItemEntity, relatedItems: List<MediaItemEntity>, targetSpace: com.mebonsoft.memorix.core.database.entity.MediaSpace) {
+        viewModelScope.launch {
+            transientState.update { it.copy(isSaving = true, message = null) }
+            runCatching {
+                val ids = (relatedItems + item).distinctBy { it.id }.map { it.id }
+                mediaRepository.moveMediaToSpace(ids, targetSpace)
+            }.onSuccess {
+                transientState.update { it.copy(isSaving = false, message = "${detailSpaceLabel(targetSpace)}함으로 이동했습니다.") }
+            }.onFailure { error ->
+                transientState.update { it.copy(isSaving = false, message = error.message ?: "이동에 실패했습니다.") }
+            }
         }
     }
 

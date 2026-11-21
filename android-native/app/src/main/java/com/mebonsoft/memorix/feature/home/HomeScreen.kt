@@ -51,6 +51,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -129,6 +130,8 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showDayPicker by remember { mutableStateOf(false) }
     var selectedDayMillis by remember { mutableStateOf<Long?>(null) }
+    var dayImportNote by remember { mutableStateOf("") }
+    var dayImportTags by remember { mutableStateOf("") }
     var showDaySpacePicker by remember { mutableStateOf(false) }
     var pendingDayImportRequest by remember { mutableStateOf<MediaStoreDayImportRequest?>(null) }
     var dayImportJob by remember { mutableStateOf<Job?>(null) }
@@ -217,7 +220,12 @@ fun HomeScreen(
                     isDayBulkImportActive = false
                     viewModel.showError("선택한 날짜에 가져올 사진·영상이 없습니다.")
                 } else {
-                    viewModel.importMedia(uris = uris, space = request.space)
+                viewModel.importMedia(
+                        uris = uris,
+                        space = request.space,
+                        note = dayImportNote,
+                        tagLabels = dayImportTags.split(',', '،').map(String::trim).filter(String::isNotBlank),
+                    )
                 }
             }
         }
@@ -423,7 +431,24 @@ fun HomeScreen(
         AlertDialog(
             onDismissRequest = { showDaySpacePicker = false },
             title = { Text("등록 위치 선택") },
-            text = { Text("선택한 날짜의 모든 사진·영상을 어디에 등록할까요?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("선택한 날짜의 사진·영상을 어디에 등록할까요?")
+                    OutlinedTextField(
+                        value = dayImportTags,
+                        onValueChange = { dayImportTags = it },
+                        label = { Text("태그") },
+                        placeholder = { Text("쉼표로 구분해 입력") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = dayImportNote,
+                        onValueChange = { dayImportNote = it },
+                        label = { Text("내용") },
+                        minLines = 2,
+                    )
+                }
+            },
             confirmButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { importDayToSpace(MediaSpace.PERSONAL) }) {

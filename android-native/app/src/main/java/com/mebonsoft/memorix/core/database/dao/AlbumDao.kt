@@ -25,7 +25,7 @@ interface AlbumDao {
             a.coverMediaId,
             a.createdAt,
             COUNT(m.id) AS itemCount,
-            COALESCE(cm.thumbPath, cm.filePath) AS coverPath
+            CASE WHEN cm.isSecret = 0 AND cm.isLocked = 0 THEN COALESCE(cm.thumbPath, cm.filePath) END AS coverPath
         FROM albums a
         LEFT JOIN media_items m ON m.albumId = a.id AND m.isTrashed = 0
         LEFT JOIN media_items cm ON cm.id = a.coverMediaId

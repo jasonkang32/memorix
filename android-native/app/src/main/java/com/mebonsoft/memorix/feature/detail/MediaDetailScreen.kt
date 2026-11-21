@@ -29,9 +29,11 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -50,13 +52,13 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.DocumentScanner
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.EditCalendar
 import androidx.compose.material.icons.outlined.Event
-import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Label
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material3.AlertDialog
@@ -75,7 +77,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -116,6 +117,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
+import com.mebonsoft.memorix.feature.common.CountryPickerField
 import com.mebonsoft.memorix.core.database.entity.MediaItemEntity
 import com.mebonsoft.memorix.core.database.entity.MediaSpace
 import com.mebonsoft.memorix.core.database.entity.MediaType
@@ -127,6 +129,12 @@ import com.mebonsoft.memorix.core.monetization.ProEntitlement
 import com.mebonsoft.memorix.core.monetization.ProFeature
 import com.mebonsoft.memorix.core.monetization.ProUpgradeContent
 import com.mebonsoft.memorix.feature.common.PlaceholderScreen
+import com.mebonsoft.memorix.core.security.MediaProtection
+import com.mebonsoft.memorix.core.security.SecretMediaCrypto
+import com.mebonsoft.memorix.core.security.SecretMediaPathSupport
+import com.mebonsoft.memorix.core.security.isProtected
+import com.mebonsoft.memorix.feature.auth.ProtectedMediaGate
+import com.mebonsoft.memorix.feature.auth.ProtectedMediaGateViewModel
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -154,6 +162,8 @@ fun MediaDetailScreen(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+    val gateViewModel: ProtectedMediaGateViewModel = hiltViewModel()
+    val gateState by gateViewModel.uiState.collectAsStateWithLifecycle()
 
     if (item == null) {
         PlaceholderScreen(
@@ -164,11 +174,18 @@ fun MediaDetailScreen(
         return
     }
 
+    // 잠금·비밀 항목은 인증 전까지 내용을 가린다. 일반 상태로 연 뒤 이 화면에서 잠근 경우는 다시 막지 않는다.
+    val openedUnprotected = remember(item.id) { !item.isProtected }
+    if (item.isProtected && !gateState.unlocked && !openedUnprotected) {
+        ProtectedMediaGate(isProtected = true, onBack = onBack, viewModel = gateViewModel) {}
+        return
+    }
+
     var title by remember(item.id, item.title) { mutableStateOf(item.title) }
     var note by remember(item.id, item.note) { mutableStateOf(item.note) }
     var countryCode by remember(item.id, item.countryCode) { mutableStateOf(item.countryCode) }
     var region by remember(item.id, item.region) { mutableStateOf(item.region) }
-    var isSecret by remember(item.id, item.isSecret) { mutableStateOf(item.isSecret) }
+    var protection by remember(item.id, item.isSecret, item.isLocked) { mutableStateOf(MediaProtection.of(item)) }
     var takenAt by remember(item.id, item.takenAt) { mutableLongStateOf(item.takenAt) }
     var tagInput by remember(item.id) { mutableStateOf("") }
     var selectedTagIds by remember(item.id) { mutableStateOf(uiState.selectedTagIds) }
@@ -181,8 +198,23 @@ fun MediaDetailScreen(
     var shouldCloseAfterSave by remember { mutableStateOf(false) }
     var mediaPendingRemoval by remember { mutableStateOf<MediaItemEntity?>(null) }
     var fullscreenPreviewItem by remember { mutableStateOf<MediaItemEntity?>(null) }
+    var pendingDownloadItem by remember { mutableStateOf<MediaItemEntity?>(null) }
     var pendingProFeature by remember { mutableStateOf<ProFeature?>(null) }
     val isPro = uiState.entitlement == ProEntitlement.ProLifetime
+
+    val downloadLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/octet-stream"),
+    ) { destinationUri: Uri? ->
+        val sourceItem = pendingDownloadItem
+        pendingDownloadItem = null
+        if (destinationUri == null || sourceItem == null) return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            val copied = withContext(Dispatchers.IO) {
+                copyMediaToUri(context, sourceItem, destinationUri)
+            }
+            snackbarHostState.showSnackbar(if (copied) "파일을 저장했습니다" else "파일 저장에 실패했습니다")
+        }
+    }
 
     LaunchedEffect(uiState.selectedTagIds) {
         if (!tagsDirty) selectedTagIds = uiState.selectedTagIds
@@ -219,7 +251,7 @@ fun MediaDetailScreen(
     val isDirty = note.trim() != item.note.trim() ||
         countryCode.trim() != item.countryCode.trim() ||
         region.trim() != item.region.trim() ||
-        isSecret != item.isSecret ||
+        protection != MediaProtection.of(item) ||
         takenAt != item.takenAt ||
         selectedTagIds.toSet() != uiState.selectedTagIds.toSet()
 
@@ -232,7 +264,7 @@ fun MediaDetailScreen(
             region = region,
             takenAt = takenAt,
             selectedTagIds = selectedTagIds,
-            isSecret = isSecret,
+            protection = protection,
             relatedItems = uiState.relatedItems,
         )
         tagsDirty = false
@@ -351,25 +383,6 @@ fun MediaDetailScreen(
             }
             item { MediaMeta(item = item, countryCode = countryCode, region = region) }
             item {
-                MemoField(
-                    note = note,
-                    onNoteChange = { note = it },
-                )
-            }
-            item {
-                SecretWorkRow(
-                    spaceLabel = spaceLabel,
-                    isSecret = isSecret,
-                    onCheckedChange = { isSecret = it },
-                )
-            }
-            item {
-                EventDateRow(
-                    takenAt = takenAt,
-                    onClick = { showDatePicker = true },
-                )
-            }
-            item {
                 WorkLocationFields(
                     countryCode = countryCode,
                     region = region,
@@ -378,21 +391,11 @@ fun MediaDetailScreen(
                     onRegionChange = { region = it },
                 )
             }
-
-            if (item.mediaType != MediaType.VIDEO) {
-                item {
-                    OcrSection(
-                        item = item,
-                        isRunning = uiState.isOcrRunning,
-                        isPro = isPro,
-                        onRun = { if (isPro) viewModel.runOcr(item) else showOcrProDialog = true },
-                        onCopy = {
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("OCR", item.ocrText))
-                            coroutineScope.launch { snackbarHostState.showSnackbar("클립보드에 복사했습니다") }
-                        },
-                    )
-                }
+            item {
+                MemoField(
+                    note = note,
+                    onNoteChange = { note = it },
+                )
             }
             item {
                 TagSection(
@@ -410,6 +413,53 @@ fun MediaDetailScreen(
                         tagsDirty = false
                     },
                 )
+            }
+            item {
+                ProtectionSelector(
+                    selected = protection,
+                    onSelect = { selected ->
+                        val hasCredential = gateState.hasPin || gateState.hasBiometric
+                        if (selected != MediaProtection.None && !hasCredential) {
+                            coroutineScope.launch { snackbarHostState.showSnackbar("잠금·비밀을 쓰려면 설정에서 PIN을 먼저 등록하세요") }
+                        } else {
+                            protection = selected
+                        }
+                    },
+                )
+            }
+            item {
+                OutlinedButton(
+                    enabled = !uiState.isSaving,
+                    onClick = {
+                        val target = if (item.space == MediaSpace.WORK) MediaSpace.PERSONAL else MediaSpace.WORK
+                        viewModel.moveToSpace(item, uiState.relatedItems, target)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (item.space == MediaSpace.WORK) "개인함으로 이동" else "업무함으로 이동")
+                }
+            }
+            item {
+                EventDateRow(
+                    takenAt = takenAt,
+                    onClick = { showDatePicker = true },
+                )
+            }
+
+            if (item.mediaType != MediaType.VIDEO) {
+                item {
+                    OcrSection(
+                        item = item,
+                        isRunning = uiState.isOcrRunning,
+                        isPro = isPro,
+                        onRun = { if (isPro) viewModel.runOcr(item) else showOcrProDialog = true },
+                        onCopy = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("OCR", item.ocrText))
+                            coroutineScope.launch { snackbarHostState.showSnackbar("클립보드에 복사했습니다") }
+                        },
+                    )
+                }
             }
             item {
                 OutlinedButton(
@@ -467,6 +517,21 @@ fun MediaDetailScreen(
                 val shared = shareMediaItem(context, shareItem)
                 if (!shared) {
                     coroutineScope.launch { snackbarHostState.showSnackbar("공유할 수 있는 사진 파일을 찾지 못했습니다") }
+                }
+            },
+            onDownload = { downloadItem ->
+                val file = File(downloadItem.filePath)
+                if (!file.exists()) {
+                    coroutineScope.launch { snackbarHostState.showSnackbar("저장할 파일을 찾지 못했습니다") }
+                } else {
+                    pendingDownloadItem = downloadItem
+                    downloadLauncher.launch(File(SecretMediaPathSupport.decryptedPath(downloadItem.filePath)).name)
+                }
+            },
+            onOpenExternal = { videoItem ->
+                val opened = openMediaExternally(context, videoItem)
+                if (!opened) {
+                    coroutineScope.launch { snackbarHostState.showSnackbar("영상을 열 수 있는 앱을 찾지 못했습니다") }
                 }
             },
         )
@@ -591,6 +656,8 @@ private fun FullscreenMediaPreviewDialog(
     initialPage: Int,
     onDismiss: () -> Unit,
     onShare: (MediaItemEntity) -> Unit,
+    onDownload: (MediaItemEntity) -> Unit,
+    onOpenExternal: (MediaItemEntity) -> Unit,
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage) { items.size }
     Dialog(
@@ -630,6 +697,36 @@ private fun FullscreenMediaPreviewDialog(
                 fontWeight = FontWeight.SemiBold,
             )
             IconButton(
+                onClick = { onDownload(currentItem) },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 20.dp, end = if (currentItem.mediaType == MediaType.VIDEO) 176.dp else 124.dp)
+                    .size(44.dp)
+                    .background(Color.Black.copy(alpha = 0.58f), CircleShape),
+            ) {
+                Icon(
+                    Icons.Outlined.Download,
+                    contentDescription = "파일 다운로드",
+                    tint = Color.White,
+                )
+            }
+            if (currentItem.mediaType == MediaType.VIDEO) {
+                IconButton(
+                    onClick = { onOpenExternal(currentItem) },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 20.dp, end = 124.dp)
+                        .size(44.dp)
+                        .background(Color.Black.copy(alpha = 0.58f), CircleShape),
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Outlined.OpenInNew,
+                        contentDescription = "폰 내장 앱으로 영상 열기",
+                        tint = Color.White,
+                    )
+                }
+            }
+            IconButton(
                 onClick = { onShare(currentItem) },
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -666,7 +763,7 @@ private fun VideoFullscreenPlayer(item: MediaItemEntity) {
     val context = LocalContext.current
     val player = remember(item.id, item.filePath) {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(ExoMediaItem.fromUri(File(item.filePath).toUri()))
+            setMediaItem(ExoMediaItem.fromUri(item.plainFile(context).toUri()))
             prepare()
             playWhenReady = true
         }
@@ -764,10 +861,20 @@ private fun MediaPreview(
     }
 
     val canOpenFullscreen = isFullscreenPreviewAvailable(item.mediaType) && onFullscreenClick != null
+    val previewAspectRatio = remember(item.id, item.width, item.height) {
+        val width = item.width?.toFloat()
+        val height = item.height?.toFloat()
+        if (width != null && height != null && width > 0f && height > 0f) {
+            (width / height).coerceIn(0.55f, 1.8f)
+        } else {
+            4f / 3f
+        }
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(240.dp)
+            .aspectRatio(previewAspectRatio)
+            .heightIn(max = 420.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0xFFECEFF3))
             .then(if (canOpenFullscreen) Modifier.clickable(onClick = onFullscreenClick!!) else Modifier),
@@ -891,29 +998,35 @@ private fun MemoField(
 }
 
 @Composable
-private fun SecretWorkRow(
-    spaceLabel: String,
-    isSecret: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
+private fun ProtectionSelector(
+    selected: MediaProtection,
+    onSelect: (MediaProtection) -> Unit,
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = if (isSecret) MemorixPrimary.copy(alpha = 0.07f) else Color(0xFFF8F9FA),
-        border = BorderStroke(1.dp, if (isSecret) MemorixPrimary.copy(alpha = 0.30f) else Color(0xFFE0E0E0)),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Icon(Icons.Outlined.Lock, contentDescription = null, tint = if (isSecret) MemorixPrimary else Color.Gray, modifier = Modifier.size(20.dp))
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("비밀 $spaceLabel", fontWeight = FontWeight.Bold, color = MemorixInk, fontSize = 14.sp)
-                Text("켜면 파일이 앱 내부에서 암호화되고 일반 목록에서 숨겨집니다.", color = MemorixMuted, fontSize = 12.sp)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionLabel("보호")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MediaProtection.entries.forEach { option ->
+                val isSelected = option == selected
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onSelect(option) },
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isSelected) MemorixPrimary.copy(alpha = 0.10f) else Color(0xFFF8F9FA),
+                    border = BorderStroke(1.dp, if (isSelected) MemorixPrimary else Color(0xFFE0E0E0)),
+                ) {
+                    Text(
+                        text = option.label,
+                        modifier = Modifier.padding(vertical = 10.dp),
+                        textAlign = TextAlign.Center,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isSelected) MemorixPrimary else MemorixInk,
+                        fontSize = 14.sp,
+                    )
+                }
             }
-            Switch(checked = isSecret, onCheckedChange = onCheckedChange)
         }
+        Text(selected.description, color = MemorixMuted, fontSize = 12.sp)
     }
 }
 
@@ -959,14 +1072,10 @@ private fun WorkLocationFields(
             fontSize = 12.sp,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
+            CountryPickerField(
                 value = countryCode,
                 onValueChange = onCountryChange,
                 modifier = Modifier.weight(1f),
-                label = { Text("국가") },
-                placeholder = { Text("대한민국") },
-                leadingIcon = { Icon(Icons.Outlined.Flag, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                singleLine = true,
             )
             OutlinedTextField(
                 value = region,
@@ -1040,8 +1149,8 @@ private fun TagSection(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SectionLabel("태그")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            allTags.forEach { tag ->
-                TagChip(tag = tag, selected = tag.id in selectedTagIds, onClick = { onToggle(tag.id) })
+            allTags.filter { it.id in selectedTagIds }.forEach { tag ->
+                TagChip(tag = tag, selected = true, onClick = { onToggle(tag.id) })
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1101,7 +1210,7 @@ private fun formatFileSize(bytes: Long): String {
 }
 
 private fun createBatchZipExport(context: Context, items: List<MediaItemEntity>): File? {
-    val existingItems = items.mapNotNull { item -> File(item.filePath).takeIf { it.exists() }?.let { item to it } }
+    val existingItems = items.mapNotNull { item -> item.plainFile(context).takeIf { it.exists() }?.let { item to it } }
     if (existingItems.isEmpty()) return null
     val outFile = File(context.cacheDir, "memorix_export_${System.currentTimeMillis()}.zip")
     ZipOutputStream(FileOutputStream(outFile)).use { zip ->
@@ -1118,7 +1227,7 @@ private fun createBatchZipExport(context: Context, items: List<MediaItemEntity>)
 private fun createPhotoPdfExport(context: Context, items: List<MediaItemEntity>): File? {
     val photoFiles = items
         .filter { it.mediaType == MediaType.PHOTO }
-        .mapNotNull { File(it.filePath).takeIf { file -> file.exists() } }
+        .mapNotNull { it.plainFile(context).takeIf { file -> file.exists() } }
     if (photoFiles.isEmpty()) return null
     val outFile = File(context.cacheDir, "memorix_export_${System.currentTimeMillis()}.pdf")
     val document = PdfDocument()
@@ -1147,6 +1256,51 @@ private fun createPhotoPdfExport(context: Context, items: List<MediaItemEntity>)
     return outFile
 }
 
+private fun copyMediaToUri(context: Context, item: MediaItemEntity, destinationUri: Uri): Boolean {
+    val source = runCatching { item.plainFile(context) }.getOrNull() ?: return false
+    if (!source.exists()) return false
+    return try {
+        source.inputStream().use { input ->
+            context.contentResolver.openOutputStream(destinationUri)?.use { output ->
+                input.copyTo(output)
+            } ?: return false
+        }
+        true
+    } catch (_: Exception) {
+        false
+    }
+}
+
+private fun openMediaExternally(context: Context, item: MediaItemEntity): Boolean {
+    if (item.mediaType != MediaType.VIDEO) return false
+    val file = runCatching { item.plainFile(context) }.getOrNull() ?: return false
+    if (!file.exists()) return false
+    return try {
+        val contentUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(contentUri, mediaMimeType(item))
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = ClipData.newUri(context.contentResolver, file.name, contentUri)
+        }
+        context.startActivity(viewIntent)
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
+    } catch (_: IllegalArgumentException) {
+        false
+    } catch (_: SecurityException) {
+        false
+    }
+}
+
+private fun mediaMimeType(item: MediaItemEntity): String = item.mimeType.ifBlank {
+    when (item.mediaType) {
+        MediaType.PHOTO -> "image/*"
+        MediaType.VIDEO -> "video/*"
+        MediaType.DOCUMENT -> "application/octet-stream"
+    }
+}
+
 private fun shareExportFile(context: Context, file: File, mimeType: String, chooserTitle: String): Boolean {
     if (!file.exists()) return false
     return try {
@@ -1165,7 +1319,7 @@ private fun shareExportFile(context: Context, file: File, mimeType: String, choo
 }
 
 private fun shareMediaItem(context: Context, item: MediaItemEntity): Boolean {
-    val file = File(item.filePath)
+    val file = runCatching { item.plainFile(context) }.getOrNull() ?: return false
     if (!file.exists()) return false
     return try {
         val contentUri = FileProvider.getUriForFile(
@@ -1196,3 +1350,6 @@ private fun shareMediaItem(context: Context, item: MediaItemEntity): Boolean {
         false
     }
 }
+
+/** 재생·공유·저장용 실제 파일. 잠금·비밀 항목은 복호화한 캐시 파일을 쓴다. */
+private fun MediaItemEntity.plainFile(context: Context): File = SecretMediaCrypto.plainFile(context, filePath)

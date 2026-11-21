@@ -30,13 +30,13 @@ import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.CloudQueue
 import androidx.compose.material.icons.outlined.Save
-import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +47,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,12 +58,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.mebonsoft.memorix.BuildConfig
 import com.mebonsoft.memorix.core.backup.BackupExportMode
+import com.mebonsoft.memorix.core.cloud.AUTO_BACKUP_INTERVAL_OPTIONS
 import com.mebonsoft.memorix.core.cloud.DriveCloudSyncSupport
 import com.mebonsoft.memorix.core.locale.AppLanguage
 import com.mebonsoft.memorix.core.locale.MemorixStrings
@@ -96,8 +101,14 @@ fun SettingsScreen(
     onBackupModeSelected: (BackupExportMode) -> Unit,
     onExportBackup: (android.net.Uri) -> Unit,
     onRestoreBackup: (android.net.Uri) -> Unit,
-    onCreateDriveSignInIntent: () -> Intent,
-    onDriveSignInResult: (Intent?) -> Unit,
+    onConnectDrive: () -> Unit,
+    onDriveConsentResult: (Int, Intent?) -> Unit,
+    onResumeAfterConsent: () -> Unit,
+    onConsumeConsentIntent: () -> Unit,
+    onAutoBackupEnabledChange: (Boolean) -> Unit,
+    onAutoBackupIntervalChange: (Int) -> Unit,
+    onAutoBackupWifiOnlyChange: (Boolean) -> Unit,
+    onAutoBackupModeChange: (BackupExportMode) -> Unit,
     onCloudBackup: () -> Unit,
     onCloudRestore: () -> Unit,
     onDisconnectDrive: () -> Unit,
@@ -133,10 +144,10 @@ fun SettingsScreen(
     ) { uri ->
         uri?.let(onRestoreBackup)
     }
-    val driveSignInLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult(),
+    val driveConsentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult(),
     ) { result ->
-        onDriveSignInResult(result.data)
+        onDriveConsentResult(result.resultCode, result.data)
     }
     val originalCleanupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult(),
@@ -149,6 +160,22 @@ fun SettingsScreen(
             originalCleanupLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
             onConsumeOriginalCleanupIntent()
         }
+    }
+
+    LaunchedEffect(backupState.pendingConsentIntentSender) {
+        backupState.pendingConsentIntentSender?.let { intentSender ->
+            driveConsentLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+            onConsumeConsentIntent()
+        }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) onResumeAfterConsent()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(authState.infoMessage, authState.errorMessage) {
@@ -184,23 +211,19 @@ fun SettingsScreen(
                 modifier = Modifier.padding(top = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text(strings.settingsTitle, style = MaterialTheme.typography.headlineSmall)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(strings.settingsTitle, style = MaterialTheme.typography.headlineSmall)
+                    ProStatusBadge(isPro = isPro, onClick = { showProDialog = true })
+                }
                 Text(
                     text = strings.settingsSubtitle,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-
-        item {
-            ProOverviewCard(
-                entitlement = entitlement,
-                billingState = billingState,
-                onClick = { showProDialog = true },
-                onBuy = { context.findActivity()?.let(onBuyPro) },
-                onRestore = onRestoreProPurchase,
-            )
         }
 
         if (authState.infoMessage != null || authState.errorMessage != null || backupState.infoMessage != null || backupState.errorMessage != null || billingState.infoMessage != null || billingState.errorMessage != null) {
@@ -281,10 +304,16 @@ fun SettingsScreen(
                 CloudSyncSettingsSection(
                     state = backupState,
                     isPro = isPro,
-                    onConnect = { if (isPro) driveSignInLauncher.launch(onCreateDriveSignInIntent()) else pendingProFeature = ProFeature.CloudSync },
+                    onConnect = { if (isPro) onConnectDrive() else pendingProFeature = ProFeature.CloudSync },
                     onBackup = { if (isPro) onCloudBackup() else pendingProFeature = ProFeature.CloudSync },
                     onRestore = { if (isPro) onCloudRestore() else pendingProFeature = ProFeature.CloudSync },
                     onDisconnect = onDisconnectDrive,
+                    onAutoBackupEnabledChange = { enabled ->
+                        if (isPro) onAutoBackupEnabledChange(enabled) else pendingProFeature = ProFeature.CloudSync
+                    },
+                    onAutoBackupIntervalChange = onAutoBackupIntervalChange,
+                    onAutoBackupWifiOnlyChange = onAutoBackupWifiOnlyChange,
+                    onAutoBackupModeChange = onAutoBackupModeChange,
                 )
                 SettingsDangerRow(
                     title = strings.resetAllDataTitle,
@@ -378,10 +407,12 @@ fun SettingsScreen(
     }
 
     if (showProDialog) {
-        SimpleInfoDialog(
-            title = "Memorix Pro",
-            body = "무료 버전은 등록 수량 제한 없이 로컬 기록을 자유롭게 보관합니다.\n\nPro는 오래 쓰는 사용자를 위한 고급 기능입니다.\n• 백업/복구\n• Google Drive 동기화\n• 프라이빗 보관함 보호\n• OCR 검색\n• 고급 검색/필터\n• 사진 여러 장 PDF 내보내기\n• 묶음/ZIP 공유\n\n기본 사진 공유와 문서 등록은 무료로 유지합니다.",
+        ProStatusDialog(
+            isPro = isPro,
+            billingState = billingState,
             onDismiss = { showProDialog = false },
+            onBuy = { context.findActivity()?.let(onBuyPro) },
+            onRestore = onRestoreProPurchase,
         )
     }
 
@@ -487,59 +518,55 @@ private fun LanguageSelectionDialog(
 }
 
 @Composable
-private fun ProOverviewCard(
-    entitlement: ProEntitlement,
+private fun ProStatusBadge(isPro: Boolean, onClick: () -> Unit) {
+    Text(
+        text = if (isPro) "PRO" else "FREE",
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+            .background(
+                if (isPro) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant,
+            )
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        color = if (isPro) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+    )
+}
+
+/** 상단 PRO/FREE 표시를 눌렀을 때만 뜬다. 설정 화면의 유일한 구매·복원 진입점이므로 Free일 때 버튼을 둔다. */
+@Composable
+private fun ProStatusDialog(
+    isPro: Boolean,
     billingState: ProBillingState,
-    onClick: () -> Unit,
+    onDismiss: () -> Unit,
     onBuy: () -> Unit,
     onRestore: () -> Unit,
 ) {
-    val isPro = entitlement == ProEntitlement.ProLifetime
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .background(
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                shape = RoundedCornerShape(20.dp),
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Memorix Pro", fontWeight = FontWeight.Bold) },
+        text = {
+            Text(
+                if (isPro) "Pro가 활성화되어 있습니다." else "Pro: 백업·복구, Google Drive 동기화, 프라이빗 보관함, OCR 검색, 고급 검색, PDF 내보내기, 묶음 공유",
+                style = MaterialTheme.typography.bodyMedium,
             )
-            .padding(horizontal = 16.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Outlined.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(if (isPro) "Memorix Pro 활성화됨" else "Memorix Pro", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(
-                    "무료는 등록 제한 없이, Pro는 백업·프라이빗 보관함·OCR·PDF 내보내기 중심",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        Text(
-            if (isPro) "백업·복구, 태그 관리, OCR, PDF 내보내기, 묶음 공유를 사용할 수 있습니다." else "기본 사진 공유와 문서 등록은 무료로 유지하고, 여러 장 묶음 공유와 기록 PDF 생성은 Pro 가치로 분리합니다.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (!isPro) {
-                Button(onClick = onBuy, enabled = !billingState.isWorking, modifier = Modifier.weight(1f)) {
+        },
+        confirmButton = {
+            if (isPro) {
+                TextButton(onClick = onDismiss) { Text("확인") }
+            } else {
+                Button(onClick = onBuy, enabled = !billingState.isWorking) {
                     Text(billingState.productPrice?.let { "Pro 구매 · $it" } ?: "Pro 구매")
                 }
-                OutlinedButton(onClick = onRestore, enabled = !billingState.isWorking, modifier = Modifier.weight(1f)) {
-                    Text("구매 복원")
-                }
-            } else {
-                OutlinedButton(onClick = onRestore, enabled = !billingState.isWorking, modifier = Modifier.fillMaxWidth()) {
-                    Text("구매 내역 다시 확인")
-                }
             }
-        }
-    }
+        },
+        dismissButton = {
+            if (!isPro) {
+                TextButton(onClick = onRestore, enabled = !billingState.isWorking) { Text("구매 복원") }
+            }
+        },
+    )
 }
 
 @Composable
@@ -705,8 +732,14 @@ private fun CloudSyncSettingsSection(
     onBackup: () -> Unit,
     onRestore: () -> Unit,
     onDisconnect: () -> Unit,
+    onAutoBackupEnabledChange: (Boolean) -> Unit,
+    onAutoBackupIntervalChange: (Int) -> Unit,
+    onAutoBackupWifiOnlyChange: (Boolean) -> Unit,
+    onAutoBackupModeChange: (BackupExportMode) -> Unit,
 ) {
     val cloudStatus = state.cloudSyncStatus
+    val autoBackup = state.autoBackup
+    val busy = state.isWorking || cloudStatus.isWorking
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -735,27 +768,145 @@ private fun CloudSyncSettingsSection(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = onBackup,
-                    enabled = !state.isWorking && !cloudStatus.isWorking,
+                    enabled = !busy,
                     modifier = Modifier.weight(1f),
                 ) { Text(if (cloudStatus.isWorking) "처리 중..." else "지금 동기화") }
                 OutlinedButton(
                     onClick = onRestore,
-                    enabled = !state.isWorking && !cloudStatus.isWorking,
+                    enabled = !busy,
                     modifier = Modifier.weight(1f),
                 ) { Text("최신 복구") }
             }
-            TextButton(onClick = onDisconnect, enabled = !cloudStatus.isWorking, modifier = Modifier.align(Alignment.End)) {
+            Divider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("자동 백업", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        text = DriveCloudSyncSupport.autoBackupSummary(autoBackup),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = autoBackup.enabled,
+                    onCheckedChange = onAutoBackupEnabledChange,
+                    enabled = !busy,
+                )
+            }
+            if (autoBackup.enabled) {
+                Text("주기", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AUTO_BACKUP_INTERVAL_OPTIONS.forEach { hours ->
+                        FilterChip(
+                            selected = autoBackup.intervalHours == hours,
+                            onClick = { onAutoBackupIntervalChange(hours) },
+                            enabled = !busy,
+                            label = { Text(DriveCloudSyncSupport.intervalLabel(hours)) },
+                        )
+                    }
+                }
+                Text("범위", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = autoBackup.mode == BackupExportMode.Full,
+                        onClick = { onAutoBackupModeChange(BackupExportMode.Full) },
+                        enabled = !busy,
+                        label = { Text("전체") },
+                    )
+                    FilterChip(
+                        selected = autoBackup.mode == BackupExportMode.Quick,
+                        onClick = { onAutoBackupModeChange(BackupExportMode.Quick) },
+                        enabled = !busy,
+                        label = { Text("빠른") },
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Wi-Fi에서만", style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            text = "모바일 데이터 사용을 막습니다.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = autoBackup.wifiOnly,
+                        onCheckedChange = onAutoBackupWifiOnlyChange,
+                        enabled = !busy,
+                    )
+                }
+                DriveCloudSyncSupport.nextRunLabel(autoBackup)?.let { label ->
+                    Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                autoBackup.lastMessage?.let { message ->
+                    Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            TextButton(onClick = onDisconnect, enabled = !busy, modifier = Modifier.align(Alignment.End)) {
                 Text("연결 해제")
             }
         } else {
             Button(
                 onClick = onConnect,
-                enabled = !state.isWorking && !cloudStatus.isWorking,
+                enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Google Drive 연결") }
+            ) { Text(if (cloudStatus.isWorking) "연결 중..." else "Google Drive 연결") }
+        }
+        if (state.connectStage != DriveConnectStage.Idle) {
+            Text(
+                text = state.connectStage.label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        val failureMessage = state.cloudLastError ?: cloudStatus.connectionError
+        if (failureMessage != null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(12.dp),
+                    )
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = "연결 실패 사유",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+                Text(
+                    text = failureMessage,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+                Text(
+                    text = "다시 시도해도 같은 사유가 나오면 Google Cloud Console의 OAuth 클라이언트(SHA-1)·동의 화면 게시 상태를 확인하세요.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
         }
         Text(
-            text = "내 Google Drive의 앱 전용 공간(appDataFolder)에 Memorix 백업 ZIP을 저장합니다. 일반 Drive 목록에는 보이지 않고, 최신 백업으로 새 폰 복구가 가능합니다.",
+            text = "진단: ${state.cloudDiagnostics.summary}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = if (cloudStatus.isConnected) {
+                "내 Google Drive의 앱 전용 공간(appDataFolder)에 Memorix 백업 ZIP을 저장합니다. 일반 Drive 목록에는 보이지 않고, 최신 백업으로 새 폰 복구가 가능합니다."
+            } else {
+                "Drive 연결은 Google 승인 화면에서 '허용'을 눌러야 완료됩니다. 연결되면 상태가 '연결됨'으로 바뀝니다."
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

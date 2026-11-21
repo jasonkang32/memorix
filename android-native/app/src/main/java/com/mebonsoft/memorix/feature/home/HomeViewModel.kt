@@ -40,6 +40,7 @@ class HomeViewModel @Inject constructor(
         mediaRepository.observeTopTags(limit = 10),
         transientState,
     ) { items, topTags, transient ->
+        // 비밀은 숨기고, 잠금은 미리보기를 가린 채 보여준다(MediaThumbnailCard).
         val visibleItems = items.filterNot { it.isSecret }
         HomeUiState(
             items = visibleItems,
@@ -110,7 +111,12 @@ class HomeViewModel @Inject constructor(
         transientState.update { it.copy(selectedImportSpace = space) }
     }
 
-    fun importMedia(uris: List<Uri>, space: MediaSpace = transientState.value.selectedImportSpace) {
+    fun importMedia(
+        uris: List<Uri>,
+        space: MediaSpace = transientState.value.selectedImportSpace,
+        note: String = "",
+        tagLabels: List<String> = emptyList(),
+    ) {
         if (uris.isEmpty()) return
         importJob?.cancel()
         importJob = viewModelScope.launch {
@@ -122,7 +128,11 @@ class HomeViewModel @Inject constructor(
                 )
             }
             try {
-                val importedIds = mediaRepository.importMedia(uris, space)
+                val importedIds = if (note.isNotBlank() || tagLabels.isNotEmpty()) {
+                    mediaRepository.importMediaWithLabels(uris, space, note, tagLabels)
+                } else {
+                    mediaRepository.importMedia(uris, space)
+                }
                 refreshManagedStorageUsage()
                 transientState.update {
                     it.copy(

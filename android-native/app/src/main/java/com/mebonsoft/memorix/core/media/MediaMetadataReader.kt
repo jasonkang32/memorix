@@ -100,7 +100,9 @@ class MediaMetadataReader @Inject constructor(
         val longest = maxOf(bounds.outWidth, bounds.outHeight).coerceAtLeast(1)
         val sampleSize = Integer.highestOneBit((longest / maxLongEdge).coerceAtLeast(1))
         val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-        val bitmap = BitmapFactory.decodeFile(photoFile.absolutePath, options) ?: return@runCatching null
+        val decoded = BitmapFactory.decodeFile(photoFile.absolutePath, options) ?: return@runCatching null
+        val orientation = readOrientation(photoFile)
+        val bitmap = ExifOrientationSupport.applyOrientation(decoded, orientation)
         outputFile.parentFile?.mkdirs()
         FileOutputStream(outputFile).use { stream ->
             if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 82, stream)) return@runCatching null
@@ -109,10 +111,19 @@ class MediaMetadataReader @Inject constructor(
         outputFile
     }.getOrNull()
 
+    private fun readOrientation(file: File): Int = runCatching {
+        ExifInterface(file).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+    }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+
+    private fun ExifInterface.displayDimensions(): Pair<Int?, Int?> = ExifOrientationSupport.displayDimensions(
+        width = getAttributeInt(ExifInterface.TAG_IMAGE_WIDTH, 0).takeIf { it > 0 },
+        height = getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, 0).takeIf { it > 0 },
+        orientation = getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL),
+    )
+
     private fun readPhotoMetadata(file: File, sourceFileTimeMillis: Long?): Metadata {
         val exif = ExifInterface(file)
-        val width = exif.getAttributeInt(ExifInterface.TAG_IMAGE_WIDTH, 0).takeIf { it > 0 }
-        val height = exif.getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, 0).takeIf { it > 0 }
+        val (width, height) = exif.displayDimensions()
         return Metadata(
             takenAt = resolveSourceTakenAt(
                 embeddedTakenAt = exif.dateTimeOriginalToEpochMillis(),
@@ -168,8 +179,7 @@ class MediaMetadataReader @Inject constructor(
         val nowMillis = System.currentTimeMillis()
         resolver.openInputStream(uri)?.use { input ->
             val exif = ExifInterface(input)
-            val width = exif.getAttributeInt(ExifInterface.TAG_IMAGE_WIDTH, 0).takeIf { it > 0 }
-            val height = exif.getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, 0).takeIf { it > 0 }
+            val (width, height) = exif.displayDimensions()
             Metadata(
                 takenAt = resolveSourceTakenAt(exif.dateTimeOriginalToEpochMillis(), sourceFileTimeMillis, nowMillis),
                 fileSizeKb = (fallbackSizeBytes ?: 0L) / 1024,

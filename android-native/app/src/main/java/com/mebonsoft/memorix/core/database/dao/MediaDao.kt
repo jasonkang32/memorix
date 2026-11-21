@@ -91,6 +91,9 @@ interface MediaDao {
     @Query("UPDATE media_items SET isTrashed = :trashed WHERE id = :id")
     suspend fun setTrashed(id: Long, trashed: Boolean)
 
+    @Query("UPDATE media_items SET space = :space WHERE id IN (:ids)")
+    suspend fun updateSpace(ids: List<Long>, space: MediaSpace)
+
     @Query("UPDATE media_items SET albumId = :albumId WHERE id IN (:ids)")
     suspend fun moveToAlbum(ids: List<Long>, albumId: Long?)
 

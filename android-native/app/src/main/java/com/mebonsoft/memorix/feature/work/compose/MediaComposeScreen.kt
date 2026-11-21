@@ -35,7 +35,6 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.LocationOn
-import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -75,6 +74,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.mebonsoft.memorix.core.locale.CountryCatalog
+import com.mebonsoft.memorix.feature.common.CountryPickerField
 import com.mebonsoft.memorix.core.database.entity.MediaSpace
 import com.mebonsoft.memorix.core.database.entity.TagEntity
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixInk
@@ -122,7 +123,9 @@ fun MediaComposeScreen(
     }
 
     LaunchedEffect(uiState.mediaUris) {
-        if (uiState.mediaUris.isNotEmpty() && uiState.countryCode.isBlank() && uiState.region.isBlank()) {
+        // 국가는 기본값(대한민국)이 들어 있으므로, 사용자가 바꾸지 않았을 때만 사진 위치로 덮어쓴다.
+        val untouchedCountry = uiState.countryCode.isBlank() || uiState.countryCode == CountryCatalog.defaultCountryName
+        if (uiState.mediaUris.isNotEmpty() && untouchedCountry && uiState.region.isBlank()) {
             val location = readFirstPhotoLocation(context, uiState.mediaUris)
             if (location == null) {
                 viewModel.showLocationHint("첫 번째 사진에 위치정보가 없습니다. 위치를 남기려면 직접 입력해 주세요.")
@@ -268,6 +271,33 @@ fun MediaComposeScreen(
                 }
             }
 
+            SectionLabel(profile.locationLabel)
+            Text(
+                text = if (uiState.locationHint.isBlank()) profile.locationHint else uiState.locationHint,
+                style = MaterialTheme.typography.bodySmall,
+                color = MemorixMuted,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                CountryPickerField(
+                    value = uiState.countryCode,
+                    onValueChange = viewModel::updateCountryCode,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(14.dp),
+                )
+                OutlinedTextField(
+                    value = uiState.region,
+                    onValueChange = viewModel::updateRegion,
+                    modifier = Modifier.weight(1f),
+                    label = { Text("지역") },
+                    leadingIcon = { Icon(Icons.Outlined.LocationOn, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                    shape = RoundedCornerShape(14.dp),
+                    singleLine = true,
+                )
+            }
+
             SectionLabel(profile.noteLabel)
             OutlinedTextField(
                 value = uiState.note,
@@ -294,36 +324,6 @@ fun MediaComposeScreen(
                 onToggleTag = viewModel::toggleTag,
                 onOpenPicker = { showTagPicker = true },
             )
-
-            SectionLabel(profile.locationLabel)
-            Text(
-                text = if (uiState.locationHint.isBlank()) profile.locationHint else uiState.locationHint,
-                style = MaterialTheme.typography.bodySmall,
-                color = MemorixMuted,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                OutlinedTextField(
-                    value = uiState.countryCode,
-                    onValueChange = viewModel::updateCountryCode,
-                    modifier = Modifier.weight(1f),
-                    label = { Text("국가") },
-                    leadingIcon = { Icon(Icons.Outlined.Public, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                    shape = RoundedCornerShape(14.dp),
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = uiState.region,
-                    onValueChange = viewModel::updateRegion,
-                    modifier = Modifier.weight(1f),
-                    label = { Text("지역") },
-                    leadingIcon = { Icon(Icons.Outlined.LocationOn, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                    shape = RoundedCornerShape(14.dp),
-                    singleLine = true,
-                )
-            }
 
             Spacer(modifier = Modifier.height(40.dp))
         }

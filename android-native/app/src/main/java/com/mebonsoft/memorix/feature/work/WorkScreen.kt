@@ -9,8 +9,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,13 +21,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddAPhoto
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Photo
-import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Work
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -38,29 +33,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.mebonsoft.memorix.core.database.dao.TagUsageSummary
-import com.mebonsoft.memorix.core.database.entity.MediaType
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixBorder
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixInk
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixMuted
@@ -72,16 +59,15 @@ import com.mebonsoft.memorix.core.designsystem.theme.MemorixWorkSoft
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixWorkStart
 import com.mebonsoft.memorix.core.media.CameraCaptureSupport
 import com.mebonsoft.memorix.core.media.PendingCameraCapture
-import com.mebonsoft.memorix.feature.auth.rememberBiometricLoginLauncher
-import com.mebonsoft.memorix.feature.search.SearchSupport
-import com.mebonsoft.memorix.feature.work.timeline.TimelineSortMode
 import com.mebonsoft.memorix.feature.work.timeline.WorkTimeline
+import com.mebonsoft.memorix.feature.common.ActiveFilterSummary
+import com.mebonsoft.memorix.feature.common.MediaFilterDialog
+import com.mebonsoft.memorix.feature.common.TimelineSortRow
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WorkScreen(
     onMediaClick: (Long) -> Unit,
@@ -93,18 +79,7 @@ fun WorkScreen(
     var searching by remember { mutableStateOf(false) }
     var showFilterDialog by remember { mutableStateOf(false) }
     var showRegisterSheet by remember { mutableStateOf(false) }
-    var showSecretUnlockDialog by remember { mutableStateOf(false) }
-    var secretPinInput by remember { mutableStateOf("") }
     var pendingCameraCapture by remember { mutableStateOf<PendingCameraCapture?>(null) }
-    val launchSecretBiometric = rememberBiometricLoginLauncher(
-        onSuccess = {
-            viewModel.unlockSecretsByBiometric()
-            showSecretUnlockDialog = false
-            secretPinInput = ""
-        },
-        onError = { message -> viewModel.consumeImportMessages() },
-    )
-
     val mediaPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 30),
     ) { uris ->
@@ -119,13 +94,6 @@ fun WorkScreen(
             onNavigateToCompose(uris)
         }
     }
-    LaunchedEffect(uiState.secretUnlocked) {
-        if (uiState.secretUnlocked) {
-            showSecretUnlockDialog = false
-            secretPinInput = ""
-        }
-    }
-
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture(),
     ) { success ->
@@ -135,22 +103,6 @@ fun WorkScreen(
         if (uris.isNotEmpty()) {
             onNavigateToCompose(uris)
         }
-    }
-
-    if (showSecretUnlockDialog) {
-        SecretUnlockDialog(
-            pin = secretPinInput,
-            hasAuthCredential = uiState.hasAuthCredential,
-            canUseBiometric = uiState.canUseBiometric,
-            errorMessage = uiState.errorMessage,
-            onPinChange = { input -> secretPinInput = input.filter { it.isDigit() }.take(6) },
-            onUnlockPin = { viewModel.unlockSecretsByPin(secretPinInput) },
-            onUnlockBiometric = launchSecretBiometric,
-            onDismiss = {
-                showSecretUnlockDialog = false
-                secretPinInput = ""
-            },
-        )
     }
 
     if (showRegisterSheet) {
@@ -192,7 +144,8 @@ fun WorkScreen(
                 value = uiState.query,
                 onValueChange = viewModel::updateQuery,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("업무 미디어 검색...") },
+                label = { Text("제목·메모·태그·위치 검색") },
+                placeholder = { Text("예: 강남 교체 #현장") },
                 leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
                 trailingIcon = {
                     IconButton(onClick = {
@@ -226,14 +179,17 @@ fun WorkScreen(
                 tagsByMediaId = uiState.tagsByMediaId,
                 modifier = Modifier.weight(1f),
                 sortMode = uiState.sortMode,
+                // 잠금 항목은 상세 화면에서 생체인증/PIN을 받는다.
                 onItemClick = { item -> onMediaClick(item.id) },
-                onSecretClick = viewModel::hideItems,
+                onSecretClick = viewModel::lockItems,
+                secretActionContentDescription = "잠금",
             )
         }
     }
 
     if (showFilterDialog) {
-        WorkFilterDialog(
+        MediaFilterDialog(
+            spaceLabel = "업무",
             selectedMediaType = uiState.selectedMediaType,
             topTags = uiState.topTags,
             selectedTagLabel = uiState.selectedTagLabel,
@@ -245,33 +201,6 @@ fun WorkScreen(
             },
             onDismiss = { showFilterDialog = false },
         )
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun TimelineSortRow(
-    sortMode: TimelineSortMode,
-    onSelect: (TimelineSortMode) -> Unit,
-) {
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        TimelineSortMode.entries.forEach { mode ->
-            AssistChip(
-                onClick = { onSelect(mode) },
-                label = { Text(mode.label) },
-                colors = if (sortMode == mode) {
-                    AssistChipDefaults.assistChipColors(
-                        containerColor = MemorixPrimary.copy(alpha = 0.16f),
-                        labelColor = MemorixPrimary,
-                    )
-                } else {
-                    AssistChipDefaults.assistChipColors()
-                },
-            )
-        }
     }
 }
 
@@ -342,169 +271,6 @@ private fun WorkTopBar(
 }
 
 
-private data class WorkTagFilterGroup(
-    val title: String,
-    val labels: List<String>,
-)
-
-private val workTagFilterGroups = listOf(
-    WorkTagFilterGroup("기록 종류", listOf("회의", "요청", "결정", "아이디어", "자료")),
-    WorkTagFilterGroup("업무 맥락", listOf("내부", "거래처", "현장", "비용", "계약")),
-    WorkTagFilterGroup("보관 이유", listOf("참고용", "공유용", "확인용", "증빙용")),
-)
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun ActiveFilterSummary(
-    selectedMediaType: MediaType?,
-    selectedTagLabel: String?,
-    onOpenFilter: () -> Unit,
-    onClearMediaType: () -> Unit,
-    onClearTag: () -> Unit,
-) {
-    if (selectedMediaType == null && selectedTagLabel == null) return
-
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        selectedMediaType?.let { mediaType ->
-            WorkTagFilterChip(
-                label = "유형: ${SearchSupport.mediaTypeLabel(mediaType)} ×",
-                selected = true,
-                onClick = onClearMediaType,
-            )
-        }
-        selectedTagLabel?.let { tag ->
-            WorkTagFilterChip(
-                label = "#$tag ×",
-                selected = true,
-                onClick = onClearTag,
-            )
-        }
-        AssistChip(
-            onClick = onOpenFilter,
-            label = { Text("필터 변경") },
-            leadingIcon = { Icon(Icons.Outlined.Tune, contentDescription = null, modifier = Modifier.size(16.dp)) },
-        )
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun WorkFilterDialog(
-    selectedMediaType: MediaType?,
-    topTags: List<TagUsageSummary>,
-    selectedTagLabel: String?,
-    onSelectMediaType: (MediaType?) -> Unit,
-    onSelectTag: (String?) -> Unit,
-    onClear: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("업무 미디어 필터", fontWeight = FontWeight.Bold, color = MemorixInk) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = "필요할 때만 열어서 유형과 태그로 업무 기록을 좁혀봅니다.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MemorixMuted,
-                )
-                Text("미디어 유형", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MemorixInk)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    WorkMediaFilterChip("전체", selectedMediaType == null) { onSelectMediaType(null) }
-                    WorkMediaFilterChip("사진", selectedMediaType == MediaType.PHOTO) { onSelectMediaType(MediaType.PHOTO) }
-                    WorkMediaFilterChip("영상", selectedMediaType == MediaType.VIDEO) { onSelectMediaType(MediaType.VIDEO) }
-                    WorkMediaFilterChip("문서", selectedMediaType == MediaType.DOCUMENT) { onSelectMediaType(MediaType.DOCUMENT) }
-                }
-                WorkTagFilterPanel(
-                    topTags = topTags,
-                    selectedTagLabel = selectedTagLabel,
-                    onSelect = onSelectTag,
-                )
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("적용") } },
-        dismissButton = { TextButton(onClick = onClear) { Text("초기화") } },
-    )
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun WorkTagFilterPanel(
-    topTags: List<TagUsageSummary>,
-    selectedTagLabel: String?,
-    onSelect: (String?) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (topTags.isNotEmpty()) {
-            Text("자주 쓴 태그", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MemorixInk)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                topTags.forEach { tag ->
-                    WorkTagFilterChip(
-                        label = "#${tag.label}",
-                        selected = selectedTagLabel == tag.label,
-                        onClick = { onSelect(tag.label) },
-                    )
-                }
-            }
-        }
-        workTagFilterGroups.forEach { group ->
-            Text(group.title, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MemorixInk)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                group.labels.forEach { label ->
-                    WorkTagFilterChip(
-                        label = label,
-                        selected = selectedTagLabel == label,
-                        onClick = { onSelect(label) },
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun WorkTagFilterChip(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    AssistChip(
-        onClick = onClick,
-        label = { Text(label) },
-        colors = if (selected) {
-            AssistChipDefaults.assistChipColors(
-                containerColor = MemorixPrimary.copy(alpha = 0.14f),
-                labelColor = MemorixPrimary,
-            )
-        } else {
-            AssistChipDefaults.assistChipColors()
-        },
-    )
-}
-
-@Composable
-private fun WorkMediaFilterChip(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    AssistChip(
-        onClick = onClick,
-        label = { Text(label) },
-        colors = if (selected) {
-            AssistChipDefaults.assistChipColors(
-                containerColor = MemorixWorkSoft,
-                labelColor = MemorixWorkDeep,
-            )
-        } else {
-            AssistChipDefaults.assistChipColors()
-        },
-    )
-}
-
 @Composable
 private fun EmptyWorkBlock(hasQuery: Boolean) {
     Surface(
@@ -549,69 +315,6 @@ private fun EmptyWorkBlock(hasQuery: Boolean) {
             )
         }
     }
-}
-
-@Composable
-private fun SecretUnlockDialog(
-    pin: String,
-    hasAuthCredential: Boolean,
-    canUseBiometric: Boolean,
-    errorMessage: String?,
-    onPinChange: (String) -> Unit,
-    onUnlockPin: () -> Unit,
-    onUnlockBiometric: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("비밀 업무 보기", fontWeight = FontWeight.Bold, color = MemorixInk) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = if (hasAuthCredential) {
-                        "비밀로 설정한 업무 항목은 평소 목록에서 숨겨집니다. PIN 또는 생체인증으로 잠시 표시할 수 있습니다."
-                    } else {
-                        "비밀 업무를 사용하려면 먼저 설정에서 앱 잠금 PIN 또는 생체인증을 설정해 주세요."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MemorixMuted,
-                )
-                if (hasAuthCredential) {
-                    OutlinedTextField(
-                        value = pin,
-                        onValueChange = onPinChange,
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("PIN 6자리") },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
-                        shape = RoundedCornerShape(12.dp),
-                    )
-                    errorMessage?.let { message ->
-                        Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                    }
-                    if (canUseBiometric) {
-                        Button(
-                            onClick = onUnlockBiometric,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(999.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MemorixPrimary, contentColor = Color.White),
-                        ) {
-                            Icon(Icons.Outlined.LockOpen, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("생체인증으로 보기")
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            if (hasAuthCredential) {
-                TextButton(onClick = onUnlockPin, enabled = pin.length == 6) { Text("보기") }
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("닫기") } },
-    )
 }
 
 @Composable

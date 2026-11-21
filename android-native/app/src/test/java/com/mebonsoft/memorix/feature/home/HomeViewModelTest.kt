@@ -277,4 +277,6 @@ private class FakeBackupOperations(
     override suspend fun restoreBackup(source: Uri): ManagedStorageUsage = usage
     override suspend fun restoreBackupFromFile(source: java.io.File): ManagedStorageUsage = usage
     override suspend fun resetAllData(): ManagedStorageUsage = ManagedStorageUsage(mediaBytes = 0L, databaseBytes = 0L)
+    override suspend fun hasLocalData(): Boolean = usage.totalBytes > 0
+    override suspend fun calculateChangeSignature(): Long = usage.totalBytes
 }

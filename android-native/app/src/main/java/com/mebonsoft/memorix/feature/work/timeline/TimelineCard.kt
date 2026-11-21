@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.mebonsoft.memorix.core.locale.CountryCatalog
 import com.mebonsoft.memorix.core.database.entity.MediaItemEntity
 import com.mebonsoft.memorix.core.database.entity.MediaType
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixBorder
@@ -68,6 +69,9 @@ fun TimelineCard(
     onSecretClick: () -> Unit,
     secretActionContentDescription: String = "목록에서 숨기기",
     secretActionUnlocked: Boolean = false,
+    locked: Boolean = false,
+    accentColor: Color = MemorixPrimary,
+    softColor: Color = MemorixPrimary.copy(alpha = 0.10f),
     modifier: Modifier = Modifier,
 ) {
     if (items.isEmpty()) return
@@ -85,10 +89,12 @@ fun TimelineCard(
     ) {
         Column {
             Column(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                if (representative.region.isNotBlank() || representative.countryCode.isNotBlank()) {
+                if (locked) {
+                    Text("잠긴 기록", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MemorixInk)
+                } else if (representative.region.isNotBlank() || representative.countryCode.isNotBlank()) {
                     Text(
                         text = buildLocationLabel(representative.countryCode, representative.region),
                         style = MaterialTheme.typography.labelMedium.copy(fontSize = workListBodyTextSize),
@@ -106,13 +112,14 @@ fun TimelineCard(
             ImageGrid(
                 items = items,
                 onClick = onClick,
+                locked = locked,
             )
 
             Column(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (tags.isNotEmpty()) {
+                if (!locked && tags.isNotEmpty()) {
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -121,18 +128,18 @@ fun TimelineCard(
                             Text(
                                 text = "#$tag",
                                 modifier = Modifier
-                                    .background(MemorixPrimary.copy(alpha = 0.10f), RoundedCornerShape(999.dp))
+                                    .background(softColor, RoundedCornerShape(999.dp))
                                     .padding(horizontal = 8.dp, vertical = 4.dp),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = workListMetaTextSize,
-                                color = MemorixPrimary,
+                                color = accentColor,
                                 fontWeight = FontWeight.SemiBold,
                             )
                         }
                     }
                 }
 
-                if (representative.note.isNotBlank()) {
+                if (!locked && representative.note.isNotBlank()) {
                     Text(
                         text = representative.note,
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = workListBodyTextSize),
@@ -201,13 +208,14 @@ fun TimelineCard(
                         }
                     }
                     IconButton(
-                        onClick = onSecretClick,
+                        // 이미 잠긴 카드의 자물쇠는 다시 잠그지 않고 열기(인증)로 동작한다.
+                        onClick = { if (locked) onClick(items.firstOrNull { it.isLocked } ?: representative) else onSecretClick() },
                         modifier = Modifier.size(32.dp),
                     ) {
                         Icon(
                             imageVector = if (secretActionUnlocked) Icons.Rounded.LockOpen else Icons.Rounded.Lock,
-                            contentDescription = secretActionContentDescription,
-                            tint = MemorixMuted,
+                            contentDescription = if (locked) "잠긴 기록 열기" else secretActionContentDescription,
+                            tint = if (locked) accentColor else MemorixMuted,
                             modifier = Modifier.size(18.dp),
                         )
                     }
@@ -221,7 +229,25 @@ fun TimelineCard(
 private fun ImageGrid(
     items: List<MediaItemEntity>,
     onClick: (MediaItemEntity) -> Unit,
+    locked: Boolean = false,
 ) {
+    if (locked) {
+        val lockedItem = items.firstOrNull { it.isLocked } ?: items.first()
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(160.dp)
+                .background(MemorixPrimary.copy(alpha = 0.08f))
+                .clickable { onClick(lockedItem) },
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Icon(Icons.Rounded.Lock, contentDescription = null, tint = MemorixPrimary, modifier = Modifier.size(30.dp))
+                Text("눌러서 인증하고 보기", color = MemorixMuted, style = MaterialTheme.typography.labelMedium)
+            }
+        }
+        return
+    }
     val displayItems = items.take(4)
     val remaining = items.size - 3
 
@@ -370,8 +396,9 @@ private fun buildLocationLabel(countryCode: String, region: String): String {
     }.trim()
 }
 
-private fun countryCodeToFlag(code: String): String {
-    if (code.length != 2) return ""
+private fun countryCodeToFlag(value: String): String {
+    // 국가는 한국어 이름("대한민국")으로 저장되므로 ISO 코드로 바꿔 국기를 만든다.
+    val code = if (value.length == 2) value else CountryCatalog.all.firstOrNull { it.koreanName == value }?.code ?: return ""
     val upper = code.uppercase()
     val first = Character.toChars(0x1F1E6 - 'A'.code + upper[0].code)
     val second = Character.toChars(0x1F1E6 - 'A'.code + upper[1].code)

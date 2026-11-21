@@ -53,3 +53,4 @@ app.*.map.json
 **/*.keystore
 **/play-account.json
 **/google-play-service-account.json
+**/client_secret*.json

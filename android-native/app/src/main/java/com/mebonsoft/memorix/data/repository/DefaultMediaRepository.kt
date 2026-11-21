@@ -159,6 +159,32 @@ class DefaultMediaRepository @Inject constructor(
         rebuildSearchIndex(securedItem)
     }
 
+    override suspend fun importMediaWithLabels(
+        uris: List<Uri>,
+        space: MediaSpace,
+        note: String,
+        tagLabels: List<String>,
+    ): List<Long> {
+        val ids = tagLabels.mapNotNull { raw ->
+            val label = raw.trim().removePrefix("#")
+            if (label.isBlank()) return@mapNotNull null
+            tagDao.findByLabel(label)?.id ?: tagDao.insert(
+                com.mebonsoft.memorix.core.database.entity.TagEntity(
+                    key = "custom_${label.lowercase().replace(Regex("\\s+"), "_")}",
+                    label = label,
+                    colorHex = "#00C896",
+                    iconName = "label",
+                    isCustom = true,
+                ),
+            )
+        }.distinct()
+        return importMediaWithMetadata(uris, space, note, ids, countryCode = "", region = "")
+    }
+
+    override suspend fun moveMediaToSpace(ids: List<Long>, space: MediaSpace) {
+        if (ids.isNotEmpty()) mediaDao.updateSpace(ids.distinct(), space)
+    }
+
     override suspend fun rebuildSearchIndex(item: MediaItemEntity) {
         mediaDao.upsertSearchIndex(
             MediaSearchEntity(
