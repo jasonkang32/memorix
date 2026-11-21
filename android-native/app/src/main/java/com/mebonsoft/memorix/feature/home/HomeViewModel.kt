@@ -40,6 +40,7 @@ class HomeViewModel @Inject constructor(
         mediaRepository.observeTopTags(limit = 10),
         transientState,
     ) { items, topTags, transient ->
+        // 비밀은 숨기고, 잠금은 미리보기를 가린 채 보여준다(MediaThumbnailCard).
         val visibleItems = items.filterNot { it.isSecret }
         HomeUiState(
             items = visibleItems,

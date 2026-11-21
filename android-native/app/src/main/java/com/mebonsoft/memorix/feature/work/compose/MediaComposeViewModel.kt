@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mebonsoft.memorix.core.locale.CountryCatalog
 import com.mebonsoft.memorix.core.database.entity.MediaSpace
 import com.mebonsoft.memorix.core.database.entity.MediaType
 import com.mebonsoft.memorix.core.database.entity.TagEntity
@@ -75,7 +76,7 @@ class MediaComposeViewModel @Inject constructor(
             saveComplete = form.saveComplete,
             errorMessage = form.errorMessage,
             hasContent = form.mediaUris.isNotEmpty() || form.note.isNotBlank() || form.selectedTagIds.isNotEmpty() || form.newTagText.isNotBlank()
-                || form.countryCode.isNotBlank() || form.region.isNotBlank(),
+                || (form.countryCode.isNotBlank() && form.countryCode != CountryCatalog.defaultCountryName) || form.region.isNotBlank(),
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, ComposeUiState())
 
@@ -307,7 +308,7 @@ private data class ComposeFormState(
     val selectedTagIds: List<Long> = emptyList(),
     val newTagText: String = "",
     val tagSearchQuery: String = "",
-    val countryCode: String = "",
+    val countryCode: String = CountryCatalog.defaultCountryName,
     val region: String = "",
     val locationHint: String = "사진에 위치정보가 있으면 첫 번째 사진 기준으로 자동 표시됩니다. 위치정보가 없으면 직접 입력해 주세요.",
     val isSaving: Boolean = false,

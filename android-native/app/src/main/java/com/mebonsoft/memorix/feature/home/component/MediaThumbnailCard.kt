@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +39,19 @@ fun MediaThumbnailCard(
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick),
     ) {
+        if (item.isLocked) {
+            // 잠금 항목은 목록에서 미리보기를 가린다. 열면 상세 화면에서 인증을 요구한다.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Rounded.Lock, contentDescription = "잠긴 기록", tint = MaterialTheme.colorScheme.primary)
+            }
+            return@Box
+        }
+
         AsyncImage(
             model = previewFile,
             contentDescription = item.title,

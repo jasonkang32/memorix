@@ -12,7 +12,7 @@ class SecretMediaMigrationRunner @Inject constructor(
     suspend fun hardenExistingSecretFiles(): Int {
         var updatedCount = 0
         mediaDao.listLibrary()
-            .filter { it.isSecret }
+            .filter { it.isProtected }
             .forEach { item ->
                 val hardened = secretMediaStorageManager.hardenSecretItem(item)
                 if (hardened.filePath != item.filePath || hardened.thumbPath != item.thumbPath) {

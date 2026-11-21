@@ -3,6 +3,7 @@ package com.mebonsoft.memorix.feature.work
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mebonsoft.memorix.core.security.ProtectedListPolicy
 import com.mebonsoft.memorix.core.auth.AuthRepository
 import com.mebonsoft.memorix.core.database.dao.TagDao
 import com.mebonsoft.memorix.core.database.dao.TagUsageSummary
@@ -37,8 +38,7 @@ class WorkViewModel @Inject constructor(
             authRepository.settings.collect { settings ->
                 controls.update {
                     it.copy(
-                        hasAuthCredential = settings.hasPin || settings.biometricEnabled,
-                        canUseBiometric = settings.biometricEnabled && authRepository.canUseBiometric(),
+                        hasAuthCredential = settings.hasPin || authRepository.hasEnrolledBiometric(),
                     )
                 }
             }
@@ -56,7 +56,7 @@ class WorkViewModel @Inject constructor(
             .mapValues { (_, tags) -> tags.map { it.label }.distinct() }
         val filteredItems = items.filter { item ->
             val itemTags = tagsByMediaId[item.id].orEmpty()
-            (item.isSecret || SearchSupport.matchesLocal(item, controls.query, itemTags)) &&
+            ProtectedListPolicy.isListed(item, controls.query, SearchSupport.matchesLocal(item, controls.query, itemTags)) &&
                 (controls.selectedTagLabel == null || controls.selectedTagLabel in itemTags) &&
                 (controls.mediaType == null || item.mediaType == controls.mediaType)
         }
@@ -69,9 +69,7 @@ class WorkViewModel @Inject constructor(
             selectedTagLabel = controls.selectedTagLabel,
             sortMode = controls.sortMode,
             topTags = topTags,
-            secretUnlocked = controls.showSecrets,
             hasAuthCredential = controls.hasAuthCredential,
-            canUseBiometric = controls.canUseBiometric,
             summary = buildSummary(filteredItems, controls.mediaType),
             isImporting = controls.isImporting,
             importMessage = controls.importMessage,
@@ -101,31 +99,16 @@ class WorkViewModel @Inject constructor(
         controls.update { it.copy(sortMode = sortMode) }
     }
 
-    fun hideItems(items: List<MediaItemEntity>) {
+    /** 목록 카드의 자물쇠: 잠금으로 바꾼다. 해제는 상세 화면 보호 설정에서 한다. */
+    fun lockItems(items: List<MediaItemEntity>) {
         if (items.isEmpty()) return
+        if (!controls.value.hasAuthCredential) {
+            controls.update { it.copy(errorMessage = "잠금을 쓰려면 설정에서 PIN을 먼저 등록하세요.") }
+            return
+        }
         viewModelScope.launch {
             items.distinctBy { it.id }.forEach { item ->
-                mediaRepository.updateMedia(item.copy(isSecret = true))
-            }
-        }
-    }
-
-    fun lockSecrets() {
-        controls.update { it.copy(showSecrets = false, errorMessage = null) }
-    }
-
-    fun unlockSecretsByBiometric() {
-        controls.update { it.copy(showSecrets = true, errorMessage = null) }
-    }
-
-    fun unlockSecretsByPin(pin: String) {
-        viewModelScope.launch {
-            val ok = authRepository.verifyPin(pin)
-            controls.update {
-                it.copy(
-                    showSecrets = ok,
-                    errorMessage = if (ok) null else "PIN이 올바르지 않습니다.",
-                )
+                mediaRepository.updateMedia(item.copy(isLocked = true))
             }
         }
     }
@@ -170,9 +153,7 @@ data class WorkUiState(
     val selectedTagLabel: String? = null,
     val sortMode: TimelineSortMode = TimelineSortMode.REGISTRATION_TIME,
     val topTags: List<TagUsageSummary> = emptyList(),
-    val secretUnlocked: Boolean = false,
     val hasAuthCredential: Boolean = false,
-    val canUseBiometric: Boolean = false,
     val summary: String = "전체 0개",
     val isImporting: Boolean = false,
     val importMessage: String? = null,
@@ -184,9 +165,7 @@ private data class WorkControls(
     val mediaType: MediaType? = null,
     val selectedTagLabel: String? = null,
     val sortMode: TimelineSortMode = TimelineSortMode.REGISTRATION_TIME,
-    val showSecrets: Boolean = false,
     val hasAuthCredential: Boolean = false,
-    val canUseBiometric: Boolean = false,
     val isImporting: Boolean = false,
     val importMessage: String? = null,
     val errorMessage: String? = null,

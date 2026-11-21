@@ -1,6 +1,7 @@
 package com.mebonsoft.memorix.feature.personal
 
 import android.net.Uri
+import com.mebonsoft.memorix.core.auth.AuthRepository
 import com.mebonsoft.memorix.core.database.dao.MediaTagAssignment
 import com.mebonsoft.memorix.core.database.dao.TagDao
 import com.mebonsoft.memorix.core.database.dao.TagUsageSummary
@@ -30,6 +31,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.robolectric.RuntimeEnvironment
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
@@ -64,6 +66,7 @@ class PersonalViewModelTest {
                 ),
             ),
             tagDao = FakeTagDao(),
+            authRepository = AuthRepository(RuntimeEnvironment.getApplication()),
         )
         advanceUntilIdle()
 
@@ -74,11 +77,58 @@ class PersonalViewModelTest {
     }
 
     @Test
+    fun `tag filter combines with type and query and toggles off`() = runTest(dispatcher) {
+        val viewModel = PersonalViewModel(
+            mediaRepository = FakeMediaRepository(personalItems = listOf(
+                mediaItem(id = 11, title = "제주 사진", note = "제주"),
+                mediaItem(id = 12, title = "제주 영상", note = "제주", mediaType = MediaType.VIDEO),
+                mediaItem(id = 13, title = "서울 사진", note = "서울"),
+                mediaItem(id = 14, title = "제주 사진", note = "제주"),
+            )),
+            albumRepository = FakeAlbumRepository(),
+            tagDao = FakeTagDao(assignments = listOf(
+                MediaTagAssignment(mediaId = 11, tagId = 1, label = "여행"),
+                MediaTagAssignment(mediaId = 12, tagId = 1, label = "여행"),
+                MediaTagAssignment(mediaId = 13, tagId = 1, label = "여행"),
+            )),
+            authRepository = AuthRepository(RuntimeEnvironment.getApplication()),
+        )
+        viewModel.updateTagFilter("여행")
+        advanceUntilIdle()
+        assertEquals(listOf(11L, 12L, 13L), viewModel.uiState.value.filteredItems.map { it.id })
+        viewModel.updateMediaType(MediaType.PHOTO)
+        viewModel.updateQuery("제주")
+        advanceUntilIdle()
+        assertEquals(listOf(11L), viewModel.uiState.value.filteredItems.map { it.id })
+        viewModel.updateTagFilter("여행")
+        advanceUntilIdle()
+        assertEquals(listOf(11L, 14L), viewModel.uiState.value.filteredItems.map { it.id })
+        viewModel.updateTagFilter("여행")
+        viewModel.updateTagFilter(null)
+        advanceUntilIdle()
+        assertEquals(listOf(11L, 14L), viewModel.uiState.value.filteredItems.map { it.id })
+    }
+
+    @Test
+    fun `top tags come from personal space`() = runTest(dispatcher) {
+        val personalTag = TagUsageSummary(1, "travel", "여행", "#FFFFFF", "", 2)
+        val viewModel = PersonalViewModel(
+            mediaRepository = FakeMediaRepository(),
+            albumRepository = FakeAlbumRepository(),
+            tagDao = FakeTagDao(personalTopTags = listOf(personalTag)),
+            authRepository = AuthRepository(RuntimeEnvironment.getApplication()),
+        )
+        advanceUntilIdle()
+        assertEquals(listOf(personalTag), viewModel.uiState.value.topTags)
+    }
+
+    @Test
     fun `toggleAlbumGrid flips album mode flag`() = runTest(dispatcher) {
         val viewModel = PersonalViewModel(
             mediaRepository = FakeMediaRepository(),
             albumRepository = FakeAlbumRepository(),
             tagDao = FakeTagDao(),
+            authRepository = AuthRepository(RuntimeEnvironment.getApplication()),
         )
         advanceUntilIdle()
         assertFalse(viewModel.uiState.value.isAlbumGridMode)
@@ -100,6 +150,7 @@ class PersonalViewModelTest {
             ),
             albumRepository = FakeAlbumRepository(),
             tagDao = FakeTagDao(),
+            authRepository = AuthRepository(RuntimeEnvironment.getApplication()),
         )
         advanceUntilIdle()
 
@@ -137,13 +188,16 @@ private class FakeMediaRepository(
 
 private class FakeTagDao(
     private val assignments: List<MediaTagAssignment> = emptyList(),
+    private val personalTopTags: List<TagUsageSummary> = emptyList(),
 ) : TagDao {
     override fun observeTags(): Flow<List<TagEntity>> = flowOf(emptyList())
     override fun observeManagedTags(): Flow<List<com.mebonsoft.memorix.core.database.dao.ManagedTagSummary>> = flowOf(emptyList())
     override fun observeTagsForMedia(mediaId: Long): Flow<List<TagEntity>> = flowOf(emptyList())
     override fun observeMediaTagAssignments(): Flow<List<MediaTagAssignment>> = flowOf(assignments)
     override fun observeTopTags(limit: Int) = flowOf(emptyList<com.mebonsoft.memorix.core.database.dao.TagUsageSummary>())
-    override fun observeTopTagsForSpace(space: MediaSpace, limit: Int): Flow<List<TagUsageSummary>> = flowOf(emptyList())
+    override fun observeTopTagsForSpace(space: MediaSpace, limit: Int): Flow<List<TagUsageSummary>> = flowOf(
+        if (space == MediaSpace.PERSONAL) personalTopTags.take(limit) else emptyList(),
+    )
     override suspend fun findByLabel(label: String): TagEntity? = null
     override suspend fun insert(tag: TagEntity): Long = tag.id
     override suspend fun replaceMediaTags(crossRefs: List<MediaTagCrossRef>) = Unit

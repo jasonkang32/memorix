@@ -62,7 +62,7 @@ fun WorkTimeline(
 
     LazyColumn(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         sections.forEach { section ->
             item(key = "header_${section.dateLabel}") {
@@ -73,13 +73,13 @@ fun WorkTimeline(
                     items = group.items,
                     tags = group.items.flatMap { tagsByMediaId[it.id].orEmpty() }.distinct(),
                     onClick = { item ->
-                        val secretItem = group.items.firstOrNull { it.isSecret }
-                        onItemClick(if (secretItem != null && !secretActionUnlocked) secretItem else item)
+                        val lockedItem = group.items.firstOrNull { it.isLocked }
+                        onItemClick(lockedItem ?: item)
                     },
                     onSecretClick = { onSecretClick(group.items) },
                     secretActionContentDescription = secretActionContentDescription,
                     secretActionUnlocked = secretActionUnlocked,
-                    locked = group.items.any { it.isSecret } && !secretActionUnlocked,
+                    locked = group.items.any { it.isLocked },
                     accentColor = accentColor,
                     softColor = softColor,
                     modifier = Modifier.padding(horizontal = 4.dp),

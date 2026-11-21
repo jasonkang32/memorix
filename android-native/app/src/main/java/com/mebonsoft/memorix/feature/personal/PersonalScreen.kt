@@ -10,8 +10,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,32 +17,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddAPhoto
-import androidx.compose.material.icons.outlined.Collections
 import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Favorite
-import androidx.compose.material.icons.outlined.GridView
 
 import androidx.compose.material.icons.outlined.Photo
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -52,11 +36,11 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -67,8 +51,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.core.content.FileProvider
-import com.mebonsoft.memorix.core.database.entity.AlbumSummary
-import com.mebonsoft.memorix.core.database.entity.MediaType
 import com.mebonsoft.memorix.core.media.CameraCaptureSupport
 import com.mebonsoft.memorix.core.media.PendingCameraCapture
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixPersonalEnd
@@ -80,16 +62,16 @@ import com.mebonsoft.memorix.core.designsystem.theme.MemorixInk
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixMuted
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixPrimary
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixPrimarySoft
-import com.mebonsoft.memorix.feature.albums.AlbumCard
 import com.mebonsoft.memorix.feature.albums.AlbumEditDialog
-import com.mebonsoft.memorix.feature.work.timeline.TimelineSortMode
 import com.mebonsoft.memorix.feature.work.timeline.WorkTimeline
+import com.mebonsoft.memorix.feature.common.ActiveFilterSummary
+import com.mebonsoft.memorix.feature.common.MediaFilterDialog
+import com.mebonsoft.memorix.feature.common.TimelineSortRow
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PersonalScreen(
     onAlbumClick: (Long) -> Unit,
@@ -102,6 +84,7 @@ fun PersonalScreen(
     var showCreateDialog by remember { mutableStateOf(false) }
     var showRegisterDialog by remember { mutableStateOf(false) }
     var searching by remember { mutableStateOf(false) }
+    var showFilterDialog by remember { mutableStateOf(false) }
     var pendingCameraCapture by remember { mutableStateOf<PendingCameraCapture?>(null) }
     val mediaPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 30),
@@ -164,7 +147,8 @@ fun PersonalScreen(
     ) {
         PersonalTopBar(
             modifier = Modifier.padding(top = 12.dp),
-            filterActive = uiState.selectedMediaType != null,
+            filterActive = uiState.selectedMediaType != null || uiState.selectedTagLabel != null,
+            onFilter = { showFilterDialog = true },
             onSearch = { searching = true },
             onAddMedia = { showRegisterDialog = true },
         )
@@ -184,7 +168,8 @@ fun PersonalScreen(
                 value = uiState.query,
                 onValueChange = viewModel::updateQuery,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("개인 미디어 검색...") },
+                label = { Text("제목·메모·태그·위치 검색") },
+                placeholder = { Text("예: 제주 여행 #가족") },
                 leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
                 trailingIcon = {
                     IconButton(onClick = {
@@ -197,12 +182,15 @@ fun PersonalScreen(
             )
         }
 
-        PersonalMediaFilterRow(
+        ActiveFilterSummary(
             selectedMediaType = uiState.selectedMediaType,
-            onSelect = viewModel::updateMediaType,
+            selectedTagLabel = uiState.selectedTagLabel,
+            onOpenFilter = { showFilterDialog = true },
+            onClearMediaType = { viewModel.updateMediaType(null) },
+            onClearTag = { viewModel.updateTagFilter(null) },
         )
 
-        PersonalTimelineSortRow(
+        TimelineSortRow(
             sortMode = uiState.sortMode,
             onSelect = viewModel::updateSortMode,
         )
@@ -218,26 +206,27 @@ fun PersonalScreen(
                 accentColor = MemorixPersonalEnd,
                 softColor = MemorixPersonalSoft,
                 onItemClick = { item -> onMediaClick(item.id) },
-                onSecretClick = viewModel::hideItems,
+                onSecretClick = viewModel::lockItems,
+                secretActionContentDescription = "잠금",
             )
         }
     }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun PersonalTimelineSortRow(
-    sortMode: TimelineSortMode,
-    onSelect: (TimelineSortMode) -> Unit,
-) {
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        TimelineSortMode.entries.forEach { mode ->
-            PersonalMediaFilterChip(mode.label, sortMode == mode) { onSelect(mode) }
-        }
+    if (showFilterDialog) {
+        MediaFilterDialog(
+            spaceLabel = "개인",
+            selectedMediaType = uiState.selectedMediaType,
+            topTags = uiState.topTags,
+            selectedTagLabel = uiState.selectedTagLabel,
+            onSelectMediaType = viewModel::updateMediaType,
+            onSelectTag = viewModel::updateTagFilter,
+            onClear = {
+                viewModel.updateMediaType(null)
+                viewModel.updateTagFilter(null)
+            },
+            onDismiss = { showFilterDialog = false },
+        )
     }
+
 }
 
 @Composable
@@ -245,6 +234,7 @@ private fun PersonalTopBar(
     modifier: Modifier = Modifier,
     filterActive: Boolean,
     onSearch: () -> Unit,
+    onFilter: () -> Unit,
     onAddMedia: () -> Unit,
 ) {
     Surface(
@@ -278,6 +268,20 @@ private fun PersonalTopBar(
                 IconButton(onClick = onSearch) {
                     Icon(Icons.Outlined.Search, contentDescription = "검색", tint = MemorixInk)
                 }
+                Box {
+                    IconButton(onClick = onFilter) {
+                        Icon(Icons.Outlined.Tune, contentDescription = "필터", tint = if (filterActive) MemorixPrimary else MemorixMuted)
+                    }
+                    if (filterActive) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 8.dp, end = 8.dp)
+                                .size(8.dp)
+                                .background(MemorixPrimary, shape = androidx.compose.foundation.shape.CircleShape),
+                        )
+                    }
+                }
                 IconButton(onClick = onAddMedia) {
                     Icon(Icons.Outlined.AddAPhoto, contentDescription = "미디어 추가", tint = MemorixPrimary)
                 }
@@ -289,43 +293,6 @@ private fun PersonalTopBar(
             )
         }
     }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun PersonalMediaFilterRow(
-    selectedMediaType: MediaType?,
-    onSelect: (MediaType?) -> Unit,
-) {
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        PersonalMediaFilterChip("전체", selectedMediaType == null) { onSelect(null) }
-        PersonalMediaFilterChip("사진", selectedMediaType == MediaType.PHOTO) { onSelect(MediaType.PHOTO) }
-        PersonalMediaFilterChip("영상", selectedMediaType == MediaType.VIDEO) { onSelect(MediaType.VIDEO) }
-        PersonalMediaFilterChip("문서", selectedMediaType == MediaType.DOCUMENT) { onSelect(MediaType.DOCUMENT) }
-    }
-}
-
-@Composable
-private fun PersonalMediaFilterChip(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    AssistChip(
-        onClick = onClick,
-        label = { Text(label) },
-        colors = if (selected) {
-            AssistChipDefaults.assistChipColors(
-                containerColor = MemorixPersonalStart.copy(alpha = 0.14f),
-                labelColor = MemorixPersonalEnd,
-            )
-        } else {
-            AssistChipDefaults.assistChipColors()
-        },
-    )
 }
 
 @Composable

@@ -6,6 +6,7 @@ import com.mebonsoft.memorix.core.auth.AuthRepository
 import com.mebonsoft.memorix.core.database.dao.TagDao
 import com.mebonsoft.memorix.core.database.entity.MediaItemEntity
 import com.mebonsoft.memorix.core.database.entity.MediaSpace
+import com.mebonsoft.memorix.core.security.ProtectedMediaSession
 import com.mebonsoft.memorix.data.repository.MediaRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -22,6 +23,7 @@ class HiddenVaultViewModel @Inject constructor(
     private val mediaRepository: MediaRepository,
     private val authRepository: AuthRepository,
     tagDao: TagDao,
+    private val session: ProtectedMediaSession,
 ) : ViewModel() {
     private val controls = MutableStateFlow(HiddenVaultControls())
     private val tagAssignments = tagDao.observeMediaTagAssignments()
@@ -43,7 +45,8 @@ class HiddenVaultViewModel @Inject constructor(
         mediaRepository.observeLibrary(),
         tagAssignments,
         controls,
-    ) { items, assignments, controls ->
+        session.unlocked,
+    ) { items, assignments, controls, sessionUnlocked ->
         val secretItems = items.filter { it.isSecret && it.space == controls.space }
         val tagsByMediaId = assignments
             .filter { assignment -> secretItems.any { it.id == assignment.mediaId } }
@@ -56,7 +59,8 @@ class HiddenVaultViewModel @Inject constructor(
             workCount = items.count { it.isSecret && it.space == MediaSpace.WORK },
             personalCount = items.count { it.isSecret && it.space == MediaSpace.PERSONAL },
             tagsByMediaId = tagsByMediaId,
-            isUnlocked = controls.isUnlocked,
+            // 다른 화면에서 이미 인증했으면 다시 묻지 않는다.
+            isUnlocked = controls.isUnlocked || sessionUnlocked,
             hasAuthCredential = controls.hasAuthCredential,
             canUseBiometric = controls.canUseBiometric,
             errorMessage = controls.errorMessage,
@@ -73,12 +77,14 @@ class HiddenVaultViewModel @Inject constructor(
     }
 
     fun unlockByBiometric() {
+        session.unlock()
         controls.update { it.copy(isUnlocked = true, errorMessage = null) }
     }
 
     fun unlockByPin(pin: String) {
         viewModelScope.launch {
             val ok = authRepository.verifyPin(pin)
+            if (ok) session.unlock()
             controls.update {
                 it.copy(
                     isUnlocked = ok,

@@ -182,23 +182,23 @@ class WorkViewModelTest {
     }
 
     @Test
-    fun `secret work items remain masked in the list until unlocked`() = runTest(dispatcher) {
+    fun `secret items are hidden and locked items stay listed but not searchable`() = runTest(dispatcher) {
         val repository = FakeMediaRepository(
             workItems = listOf(
-                mediaItem(id = 1, title = "일반", note = "공개"),
-                mediaItem(id = 2, title = "비밀", note = "숨김", isSecret = true),
+                mediaItem(id = 1, title = "일반", note = "회의"),
+                mediaItem(id = 2, title = "비밀", note = "회의", isSecret = true),
+                mediaItem(id = 3, title = "잠금", note = "회의", isLocked = true),
             ),
         )
         val viewModel = WorkViewModel(repository, authRepository(), FakeTagDao())
         advanceUntilIdle()
 
-        assertEquals(listOf(1L, 2L), viewModel.uiState.value.filteredItems.map { it.id })
-        assertEquals(true, viewModel.uiState.value.filteredItems.first { it.id == 2L }.isSecret)
+        assertEquals(listOf(1L, 3L), viewModel.uiState.value.filteredItems.map { it.id }.sorted())
 
-        viewModel.unlockSecretsByBiometric()
+        viewModel.updateQuery("회의")
         advanceUntilIdle()
 
-        assertEquals(listOf(1L, 2L), viewModel.uiState.value.filteredItems.map { it.id })
+        assertEquals(listOf(1L), viewModel.uiState.value.filteredItems.map { it.id })
     }
 }
 
@@ -273,6 +273,7 @@ private fun mediaItem(
     mediaType: MediaType = MediaType.PHOTO,
     space: MediaSpace = MediaSpace.WORK,
     isSecret: Boolean = false,
+    isLocked: Boolean = false,
 ): MediaItemEntity = MediaItemEntity(
     id = id,
     mediaType = mediaType,
@@ -283,4 +284,5 @@ private fun mediaItem(
     createdAt = id,
     space = space,
     isSecret = isSecret,
+    isLocked = isLocked,
 )

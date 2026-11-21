@@ -55,10 +55,8 @@ import androidx.compose.material.icons.outlined.DocumentScanner
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.EditCalendar
 import androidx.compose.material.icons.outlined.Event
-import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Label
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Share
@@ -79,7 +77,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -120,6 +117,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
+import com.mebonsoft.memorix.feature.common.CountryPickerField
 import com.mebonsoft.memorix.core.database.entity.MediaItemEntity
 import com.mebonsoft.memorix.core.database.entity.MediaSpace
 import com.mebonsoft.memorix.core.database.entity.MediaType
@@ -131,6 +129,12 @@ import com.mebonsoft.memorix.core.monetization.ProEntitlement
 import com.mebonsoft.memorix.core.monetization.ProFeature
 import com.mebonsoft.memorix.core.monetization.ProUpgradeContent
 import com.mebonsoft.memorix.feature.common.PlaceholderScreen
+import com.mebonsoft.memorix.core.security.MediaProtection
+import com.mebonsoft.memorix.core.security.SecretMediaCrypto
+import com.mebonsoft.memorix.core.security.SecretMediaPathSupport
+import com.mebonsoft.memorix.core.security.isProtected
+import com.mebonsoft.memorix.feature.auth.ProtectedMediaGate
+import com.mebonsoft.memorix.feature.auth.ProtectedMediaGateViewModel
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -158,6 +162,8 @@ fun MediaDetailScreen(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+    val gateViewModel: ProtectedMediaGateViewModel = hiltViewModel()
+    val gateState by gateViewModel.uiState.collectAsStateWithLifecycle()
 
     if (item == null) {
         PlaceholderScreen(
@@ -168,11 +174,18 @@ fun MediaDetailScreen(
         return
     }
 
+    // 잠금·비밀 항목은 인증 전까지 내용을 가린다. 일반 상태로 연 뒤 이 화면에서 잠근 경우는 다시 막지 않는다.
+    val openedUnprotected = remember(item.id) { !item.isProtected }
+    if (item.isProtected && !gateState.unlocked && !openedUnprotected) {
+        ProtectedMediaGate(isProtected = true, onBack = onBack, viewModel = gateViewModel) {}
+        return
+    }
+
     var title by remember(item.id, item.title) { mutableStateOf(item.title) }
     var note by remember(item.id, item.note) { mutableStateOf(item.note) }
     var countryCode by remember(item.id, item.countryCode) { mutableStateOf(item.countryCode) }
     var region by remember(item.id, item.region) { mutableStateOf(item.region) }
-    var isSecret by remember(item.id, item.isSecret) { mutableStateOf(item.isSecret) }
+    var protection by remember(item.id, item.isSecret, item.isLocked) { mutableStateOf(MediaProtection.of(item)) }
     var takenAt by remember(item.id, item.takenAt) { mutableLongStateOf(item.takenAt) }
     var tagInput by remember(item.id) { mutableStateOf("") }
     var selectedTagIds by remember(item.id) { mutableStateOf(uiState.selectedTagIds) }
@@ -238,7 +251,7 @@ fun MediaDetailScreen(
     val isDirty = note.trim() != item.note.trim() ||
         countryCode.trim() != item.countryCode.trim() ||
         region.trim() != item.region.trim() ||
-        isSecret != item.isSecret ||
+        protection != MediaProtection.of(item) ||
         takenAt != item.takenAt ||
         selectedTagIds.toSet() != uiState.selectedTagIds.toSet()
 
@@ -251,7 +264,7 @@ fun MediaDetailScreen(
             region = region,
             takenAt = takenAt,
             selectedTagIds = selectedTagIds,
-            isSecret = isSecret,
+            protection = protection,
             relatedItems = uiState.relatedItems,
         )
         tagsDirty = false
@@ -370,16 +383,48 @@ fun MediaDetailScreen(
             }
             item { MediaMeta(item = item, countryCode = countryCode, region = region) }
             item {
+                WorkLocationFields(
+                    countryCode = countryCode,
+                    region = region,
+                    isLocating = uiState.isLocating,
+                    onCountryChange = { countryCode = it },
+                    onRegionChange = { region = it },
+                )
+            }
+            item {
                 MemoField(
                     note = note,
                     onNoteChange = { note = it },
                 )
             }
             item {
-                SecretWorkRow(
-                    spaceLabel = spaceLabel,
-                    isSecret = isSecret,
-                    onCheckedChange = { isSecret = it },
+                TagSection(
+                    allTags = uiState.availableTags,
+                    selectedTagIds = selectedTagIds,
+                    tagInput = tagInput,
+                    onTagInputChange = { tagInput = it },
+                    onToggle = { tagId ->
+                        selectedTagIds = if (tagId in selectedTagIds) selectedTagIds - tagId else selectedTagIds + tagId
+                        tagsDirty = true
+                    },
+                    onAddCustom = {
+                        viewModel.addCustomTag(tagInput, selectedTagIds)
+                        tagInput = ""
+                        tagsDirty = false
+                    },
+                )
+            }
+            item {
+                ProtectionSelector(
+                    selected = protection,
+                    onSelect = { selected ->
+                        val hasCredential = gateState.hasPin || gateState.hasBiometric
+                        if (selected != MediaProtection.None && !hasCredential) {
+                            coroutineScope.launch { snackbarHostState.showSnackbar("잠금·비밀을 쓰려면 설정에서 PIN을 먼저 등록하세요") }
+                        } else {
+                            protection = selected
+                        }
+                    },
                 )
             }
             item {
@@ -400,15 +445,6 @@ fun MediaDetailScreen(
                     onClick = { showDatePicker = true },
                 )
             }
-            item {
-                WorkLocationFields(
-                    countryCode = countryCode,
-                    region = region,
-                    isLocating = uiState.isLocating,
-                    onCountryChange = { countryCode = it },
-                    onRegionChange = { region = it },
-                )
-            }
 
             if (item.mediaType != MediaType.VIDEO) {
                 item {
@@ -424,23 +460,6 @@ fun MediaDetailScreen(
                         },
                     )
                 }
-            }
-            item {
-                TagSection(
-                    allTags = uiState.availableTags,
-                    selectedTagIds = selectedTagIds,
-                    tagInput = tagInput,
-                    onTagInputChange = { tagInput = it },
-                    onToggle = { tagId ->
-                        selectedTagIds = if (tagId in selectedTagIds) selectedTagIds - tagId else selectedTagIds + tagId
-                        tagsDirty = true
-                    },
-                    onAddCustom = {
-                        viewModel.addCustomTag(tagInput, selectedTagIds)
-                        tagInput = ""
-                        tagsDirty = false
-                    },
-                )
             }
             item {
                 OutlinedButton(
@@ -506,7 +525,7 @@ fun MediaDetailScreen(
                     coroutineScope.launch { snackbarHostState.showSnackbar("저장할 파일을 찾지 못했습니다") }
                 } else {
                     pendingDownloadItem = downloadItem
-                    downloadLauncher.launch(file.name)
+                    downloadLauncher.launch(File(SecretMediaPathSupport.decryptedPath(downloadItem.filePath)).name)
                 }
             },
             onOpenExternal = { videoItem ->
@@ -744,7 +763,7 @@ private fun VideoFullscreenPlayer(item: MediaItemEntity) {
     val context = LocalContext.current
     val player = remember(item.id, item.filePath) {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(ExoMediaItem.fromUri(File(item.filePath).toUri()))
+            setMediaItem(ExoMediaItem.fromUri(item.plainFile(context).toUri()))
             prepare()
             playWhenReady = true
         }
@@ -979,29 +998,35 @@ private fun MemoField(
 }
 
 @Composable
-private fun SecretWorkRow(
-    spaceLabel: String,
-    isSecret: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
+private fun ProtectionSelector(
+    selected: MediaProtection,
+    onSelect: (MediaProtection) -> Unit,
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = if (isSecret) MemorixPrimary.copy(alpha = 0.07f) else Color(0xFFF8F9FA),
-        border = BorderStroke(1.dp, if (isSecret) MemorixPrimary.copy(alpha = 0.30f) else Color(0xFFE0E0E0)),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Icon(Icons.Outlined.Lock, contentDescription = null, tint = if (isSecret) MemorixPrimary else Color.Gray, modifier = Modifier.size(20.dp))
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("비밀 $spaceLabel", fontWeight = FontWeight.Bold, color = MemorixInk, fontSize = 14.sp)
-                Text("켜면 파일이 앱 내부에서 암호화되고 일반 목록에서 숨겨집니다.", color = MemorixMuted, fontSize = 12.sp)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionLabel("보호")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MediaProtection.entries.forEach { option ->
+                val isSelected = option == selected
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onSelect(option) },
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isSelected) MemorixPrimary.copy(alpha = 0.10f) else Color(0xFFF8F9FA),
+                    border = BorderStroke(1.dp, if (isSelected) MemorixPrimary else Color(0xFFE0E0E0)),
+                ) {
+                    Text(
+                        text = option.label,
+                        modifier = Modifier.padding(vertical = 10.dp),
+                        textAlign = TextAlign.Center,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isSelected) MemorixPrimary else MemorixInk,
+                        fontSize = 14.sp,
+                    )
+                }
             }
-            Switch(checked = isSecret, onCheckedChange = onCheckedChange)
         }
+        Text(selected.description, color = MemorixMuted, fontSize = 12.sp)
     }
 }
 
@@ -1047,14 +1072,10 @@ private fun WorkLocationFields(
             fontSize = 12.sp,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
+            CountryPickerField(
                 value = countryCode,
                 onValueChange = onCountryChange,
                 modifier = Modifier.weight(1f),
-                label = { Text("국가") },
-                placeholder = { Text("대한민국") },
-                leadingIcon = { Icon(Icons.Outlined.Flag, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                singleLine = true,
             )
             OutlinedTextField(
                 value = region,
@@ -1189,7 +1210,7 @@ private fun formatFileSize(bytes: Long): String {
 }
 
 private fun createBatchZipExport(context: Context, items: List<MediaItemEntity>): File? {
-    val existingItems = items.mapNotNull { item -> File(item.filePath).takeIf { it.exists() }?.let { item to it } }
+    val existingItems = items.mapNotNull { item -> item.plainFile(context).takeIf { it.exists() }?.let { item to it } }
     if (existingItems.isEmpty()) return null
     val outFile = File(context.cacheDir, "memorix_export_${System.currentTimeMillis()}.zip")
     ZipOutputStream(FileOutputStream(outFile)).use { zip ->
@@ -1206,7 +1227,7 @@ private fun createBatchZipExport(context: Context, items: List<MediaItemEntity>)
 private fun createPhotoPdfExport(context: Context, items: List<MediaItemEntity>): File? {
     val photoFiles = items
         .filter { it.mediaType == MediaType.PHOTO }
-        .mapNotNull { File(it.filePath).takeIf { file -> file.exists() } }
+        .mapNotNull { it.plainFile(context).takeIf { file -> file.exists() } }
     if (photoFiles.isEmpty()) return null
     val outFile = File(context.cacheDir, "memorix_export_${System.currentTimeMillis()}.pdf")
     val document = PdfDocument()
@@ -1236,7 +1257,7 @@ private fun createPhotoPdfExport(context: Context, items: List<MediaItemEntity>)
 }
 
 private fun copyMediaToUri(context: Context, item: MediaItemEntity, destinationUri: Uri): Boolean {
-    val source = File(item.filePath)
+    val source = runCatching { item.plainFile(context) }.getOrNull() ?: return false
     if (!source.exists()) return false
     return try {
         source.inputStream().use { input ->
@@ -1252,7 +1273,7 @@ private fun copyMediaToUri(context: Context, item: MediaItemEntity, destinationU
 
 private fun openMediaExternally(context: Context, item: MediaItemEntity): Boolean {
     if (item.mediaType != MediaType.VIDEO) return false
-    val file = File(item.filePath)
+    val file = runCatching { item.plainFile(context) }.getOrNull() ?: return false
     if (!file.exists()) return false
     return try {
         val contentUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
@@ -1298,7 +1319,7 @@ private fun shareExportFile(context: Context, file: File, mimeType: String, choo
 }
 
 private fun shareMediaItem(context: Context, item: MediaItemEntity): Boolean {
-    val file = File(item.filePath)
+    val file = runCatching { item.plainFile(context) }.getOrNull() ?: return false
     if (!file.exists()) return false
     return try {
         val contentUri = FileProvider.getUriForFile(
@@ -1329,3 +1350,6 @@ private fun shareMediaItem(context: Context, item: MediaItemEntity): Boolean {
         false
     }
 }
+
+/** 재생·공유·저장용 실제 파일. 잠금·비밀 항목은 복호화한 캐시 파일을 쓴다. */
+private fun MediaItemEntity.plainFile(context: Context): File = SecretMediaCrypto.plainFile(context, filePath)

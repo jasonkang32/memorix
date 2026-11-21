@@ -93,6 +93,11 @@ class AuthRepository @Inject constructor(
         return result == BiometricManager.BIOMETRIC_SUCCESS
     }
 
+    /** 기기에 생체정보(지문·얼굴)가 등록되어 있는지. 화면잠금 비밀번호만 있는 경우는 제외한다. */
+    fun hasEnrolledBiometric(): Boolean =
+        BiometricManager.from(context).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
+            BiometricManager.BIOMETRIC_SUCCESS
+
     private fun hashPin(pin: String): String {
         val salted = "memorix-local-pin:$pin"
         val bytes = MessageDigest.getInstance("SHA-256").digest(salted.toByteArray())

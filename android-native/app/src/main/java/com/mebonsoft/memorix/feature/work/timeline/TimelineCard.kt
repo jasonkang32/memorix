@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.mebonsoft.memorix.core.locale.CountryCatalog
 import com.mebonsoft.memorix.core.database.entity.MediaItemEntity
 import com.mebonsoft.memorix.core.database.entity.MediaType
 import com.mebonsoft.memorix.core.designsystem.theme.MemorixBorder
@@ -88,11 +89,11 @@ fun TimelineCard(
     ) {
         Column {
             Column(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 if (locked) {
-                    Text("비밀 처리된 업무", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MemorixInk)
+                    Text("잠긴 기록", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MemorixInk)
                 } else if (representative.region.isNotBlank() || representative.countryCode.isNotBlank()) {
                     Text(
                         text = buildLocationLabel(representative.countryCode, representative.region),
@@ -115,7 +116,7 @@ fun TimelineCard(
             )
 
             Column(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 if (!locked && tags.isNotEmpty()) {
@@ -207,13 +208,14 @@ fun TimelineCard(
                         }
                     }
                     IconButton(
-                        onClick = onSecretClick,
+                        // 이미 잠긴 카드의 자물쇠는 다시 잠그지 않고 열기(인증)로 동작한다.
+                        onClick = { if (locked) onClick(items.firstOrNull { it.isLocked } ?: representative) else onSecretClick() },
                         modifier = Modifier.size(32.dp),
                     ) {
                         Icon(
                             imageVector = if (secretActionUnlocked) Icons.Rounded.LockOpen else Icons.Rounded.Lock,
-                            contentDescription = secretActionContentDescription,
-                            tint = MemorixMuted,
+                            contentDescription = if (locked) "잠긴 기록 열기" else secretActionContentDescription,
+                            tint = if (locked) accentColor else MemorixMuted,
                             modifier = Modifier.size(18.dp),
                         )
                     }
@@ -230,7 +232,7 @@ private fun ImageGrid(
     locked: Boolean = false,
 ) {
     if (locked) {
-        val lockedItem = items.firstOrNull { it.isSecret } ?: items.first()
+        val lockedItem = items.firstOrNull { it.isLocked } ?: items.first()
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -394,8 +396,9 @@ private fun buildLocationLabel(countryCode: String, region: String): String {
     }.trim()
 }
 
-private fun countryCodeToFlag(code: String): String {
-    if (code.length != 2) return ""
+private fun countryCodeToFlag(value: String): String {
+    // 국가는 한국어 이름("대한민국")으로 저장되므로 ISO 코드로 바꿔 국기를 만든다.
+    val code = if (value.length == 2) value else CountryCatalog.all.firstOrNull { it.koreanName == value }?.code ?: return ""
     val upper = code.uppercase()
     val first = Character.toChars(0x1F1E6 - 'A'.code + upper[0].code)
     val second = Character.toChars(0x1F1E6 - 'A'.code + upper[1].code)

@@ -26,7 +26,7 @@ import com.mebonsoft.memorix.core.media.OriginalSourceCleanupStatus
         MediaTagCrossRef::class,
         MediaSearchEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 @TypeConverters(DatabaseConverters::class)
@@ -126,6 +126,15 @@ abstract class MemorixDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE media_items ADD COLUMN sourceDeletedAt INTEGER")
                 db.execSQL("ALTER TABLE media_items ADD COLUMN sourceCleanupStatus TEXT NOT NULL DEFAULT 'UNKNOWN'")
                 db.execSQL("ALTER TABLE media_items ADD COLUMN sourceCleanupError TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        // 비밀을 "비밀(숨김)"과 "잠금(목록 표시·열 때 인증)"으로 나눈다.
+        // 기존 비밀 항목은 목록에서 사라지지 않도록 잠금으로 옮긴다. 파일은 둘 다 암호화 상태라 그대로 둔다.
+        val MIGRATION_7_8: Migration = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE media_items ADD COLUMN isLocked INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE media_items SET isLocked = 1, isSecret = 0 WHERE isSecret = 1")
             }
         }
 
